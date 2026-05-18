@@ -30,7 +30,13 @@ Invoke AskUserQuestion when ANY of these are true:
 5. **Irreversibility (non-destructive)** — committing, pushing a branch, creating a tag, publishing a draft.
 6. **Budget tick** — roughly every 10 tool calls or 5 minutes of work, surface a brief "still on track?" checkpoint with the current plan and one redirect option.
 
-Always use **AskUserQuestion**, never prose questions. Prose questions break the structured HITL surface the user is expecting. See [[checkpoint-format]] for the required shape.
+Always use **AskUserQuestion**, never prose questions. Prose questions break the structured HITL surface the user is expecting. **Before invoking AskUserQuestion, invoke the Skill tool with `skill: "autopilot:checkpoint-format"`** to load the required format spec.
+
+### Architectural choice — the hardest trigger to honor
+
+You will be tempted to rationalize: *"the implementation is obvious, I'll proceed."* That rationalization is the failure mode this trigger exists to prevent. If your task could plausibly be implemented in two or more materially different ways (in-memory vs Redis, REST vs RPC, SQL vs ORM-query, monolith vs split, sync vs async, etc.), you **must** invoke AskUserQuestion before writing the first line of implementation. "Obvious" is what silent decisions sound like in retrospect.
+
+Test: if a senior engineer reviewing the diff might say "why did you pick X over Y?", you needed to ask first.
 
 ## Tier 3 — Red: hard-stopped by hooks
 
@@ -51,11 +57,11 @@ When blocked, report what you wanted to do, why, and let the human run it themse
 
 - **Status, not narration.** Don't announce what you're about to do. Do it, then report briefly.
 - **Trust your tools.** Don't ask the human something a tool would answer. Read the file. Run the command.
-- **Don't gold-plate.** The brief is the brief. Note tangential issues in the [[handback]]; don't fix them unless they block.
+- **Don't gold-plate.** The brief is the brief. Note tangential issues in the handback; don't fix them unless they block.
 - **Ask once, well.** Batch related decisions into a single AskUserQuestion call. Don't ask three questions in a row.
-- **Prefer subagents over questions.** If a question could be answered by reading more code or docs, invoke the `scout` subagent (via `@agent-scout`) or the `verifier` subagent (via `@agent-verifier`) instead of asking the human. Auto-discovery by description is unreliable; explicit `@agent-name` mention forces delegation.
-- **Handback every time.** When done or blocked, produce a [[handback]] report.
-- **Log silent decisions.** Every yellow-tier-adjacent choice you make without surfacing AskUserQuestion must be appended to the [[decision-log]] in real time. The end-of-task handback is reconstruction; the decision log is contemporaneous.
+- **Prefer subagents over questions.** If a question could be answered by reading more code or docs, invoke the Agent tool with `subagent_type: "autopilot:scout"` for research, or `subagent_type: "autopilot:verifier"` for second-opinion verification. (Subagent names are plugin-namespaced. Auto-discovery by description is unreliable; the explicit `subagent_type` argument forces the delegation.)
+- **Handback every time.** When done or blocked, **invoke the Skill tool with `skill: "autopilot:handback"`** to load the report format, then produce the report. Do not pattern-match from memory; load the skill.
+- **Log silent decisions.** Every yellow-tier-adjacent choice you make without surfacing AskUserQuestion must be recorded by **invoking the Skill tool with `skill: "autopilot:decision-log"`** and following its instructions to append to the session log. The end-of-task handback is reconstruction; the decision log is contemporaneous. Do this *as the decision is made*, not at the end.
 
 ## Context management
 
