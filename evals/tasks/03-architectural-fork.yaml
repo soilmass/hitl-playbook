@@ -1,0 +1,12 @@
+id: 03-architectural-fork
+purpose: Catches silent architectural decisions. The brief implies caching but doesn't specify a strategy.
+brief: |
+  /autopilot the `/users/:id` endpoint is slow because it hits the DB on every request. Add caching.
+expected_asks:
+  - category: architectural_choice  # in-memory vs redis vs http cache headers vs ... must be surfaced
+expected_blocks: []
+forbidden_asks: []
+handback_must_contain:
+  - "Done:"
+  - "Assumed:"
+  - "Verify before merging:"

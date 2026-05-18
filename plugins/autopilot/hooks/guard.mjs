@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // autopilot plugin hook guard.
-// Modes: pretool-bash | pretool-write | session-start
+// Modes: pretool-bash | pretool-write | posttool-log | session-start
 // Invoked from hooks.json. Reads JSON on stdin. Exit 0 = allow, 2 = block.
 //
 // NOT a real security boundary. Stops accidents and well-behaved agents;
@@ -8,9 +8,12 @@
 // (python -c, perl -e, etc. are blocked; novel indirection paths are not).
 // Real enforcement requires OS-level sandboxing.
 
-import { readFileSync, realpathSync, mkdirSync } from 'node:fs';
-import { resolve, sep } from 'node:path';
+import { readFileSync, realpathSync, mkdirSync, appendFileSync, existsSync, writeFileSync } from 'node:fs';
+import { resolve, sep, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+
+const BUDGET_YELLOW = Number(process.env.AUTOPILOT_BUDGET_YELLOW) || 50;
+const BUDGET_RED = Number(process.env.AUTOPILOT_BUDGET_RED) || 150;
 
 // Defang the hook environment: ignore caller's PATH and preload shims.
 process.env.PATH = '/usr/bin:/bin:/usr/local/bin';
@@ -116,6 +119,94 @@ function checkWrite(input) {
   }
 }
 
+// --- budget tracking -------------------------------------------------------
+
+function budgetPath() {
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const sessionId = process.env.CLAUDE_SESSION_ID || 'unknown-session';
+  return join(projectDir, '.claude', 'autopilot-logs', `${sessionId}.budget`);
+}
+
+function readBudget() {
+  try { return Number(readFileSync(budgetPath(), 'utf8')) || 0; }
+  catch { return 0; }
+}
+
+function bumpBudget() {
+  try {
+    const p = budgetPath();
+    mkdirSync(dirname(p), { recursive: true });
+    const next = readBudget() + 1;
+    writeFileSync(p, String(next));
+    return next;
+  } catch { return 0; }
+}
+
+function checkBudget() {
+  const n = readBudget();
+  if (n >= BUDGET_RED) {
+    block(`budget exceeded (${n} tool calls; red threshold ${BUDGET_RED}). Hand back to human; do not continue.`);
+  }
+  if (n === BUDGET_YELLOW) {
+    // Soft warning at the threshold: stderr without blocking. Agent surfaces.
+    process.stderr.write(
+      `autopilot: budget tick (${n}/${BUDGET_RED} tool calls). Surface a "still on track?" checkpoint via AskUserQuestion before the next tool.\n`
+    );
+  }
+}
+
+// --- posttool-log ---------------------------------------------------------
+
+// Append a redacted one-line JSONL entry to the per-session log.
+// Captures: timestamp, tool name, brief input summary, exit status.
+// Skips: tool output (where secrets live), reads of safe files.
+
+const SECRET_PATTERNS = [
+  /(api[_-]?key|token|secret|password|bearer|authorization)[=:\s]+["']?([^"'\s,;)]+)/gi,
+  /\b[A-Za-z0-9_-]{32,}\b/g, // long opaque tokens
+];
+
+function redact(s) {
+  if (!s) return s;
+  let out = String(s).slice(0, 200);
+  for (const pat of SECRET_PATTERNS) out = out.replace(pat, (m) => '***');
+  return out;
+}
+
+function summarizeInput(toolName, input) {
+  if (!input) return '';
+  // Pick the most informative field per tool.
+  if (toolName === 'Bash') return input.command || '';
+  if (toolName === 'Write' || toolName === 'Edit' || toolName === 'Read') return input.file_path || '';
+  if (toolName === 'Grep') return `${input.pattern || ''} in ${input.path || '.'}`;
+  if (toolName === 'Glob') return input.pattern || '';
+  if (toolName === 'WebFetch' || toolName === 'WebSearch') return input.url || input.query || '';
+  // Fallback: stringify first key
+  const k = Object.keys(input)[0];
+  return k ? `${k}=${JSON.stringify(input[k])}` : '';
+}
+
+function logToolUse(input) {
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const sessionId = process.env.CLAUDE_SESSION_ID || 'unknown-session';
+  const logDir = join(projectDir, '.claude', 'autopilot-logs');
+  const logPath = join(logDir, `${sessionId}.jsonl`);
+  try {
+    mkdirSync(logDir, { recursive: true });
+    const toolName = input.tool_name || 'unknown';
+    const entry = {
+      ts: new Date().toISOString(),
+      tool: toolName,
+      input: redact(summarizeInput(toolName, input.tool_input)),
+      ok: input.tool_response?.is_error ? false : true,
+      n: bumpBudget(), // running tool-call count for the session
+    };
+    appendFileSync(logPath, JSON.stringify(entry) + '\n');
+  } catch {
+    // Logging must never block a hook; swallow errors silently.
+  }
+}
+
 // --- session-start --------------------------------------------------------
 
 function sessionStart() {
@@ -135,9 +226,11 @@ function sessionStart() {
 // --- dispatch -------------------------------------------------------------
 
 switch (mode) {
-  case 'pretool-bash':   checkBash(readStdin()); break;
-  case 'pretool-write':  checkWrite(readStdin()); break;
-  case 'session-start':  sessionStart(); break;
+  case 'pretool-bash':    checkBudget(); checkBash(readStdin()); break;
+  case 'pretool-write':   checkBudget(); checkWrite(readStdin()); break;
+  case 'pretool-budget':  checkBudget(); break;
+  case 'posttool-log':    logToolUse(readStdin()); break;
+  case 'session-start':   sessionStart(); break;
   default:
     process.stderr.write(`autopilot guard: unknown mode '${mode}'\n`);
     process.exit(1);

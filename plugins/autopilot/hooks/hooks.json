@@ -18,6 +18,26 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs\" pretool-write"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs\" pretool-budget"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs\" posttool-log"
+          }
+        ]
       }
     ],
     "SessionStart": [

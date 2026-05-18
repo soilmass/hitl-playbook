@@ -109,22 +109,27 @@ This is the highest-leverage component. A change to the agent's operating instru
 When an agent change ships and breaks something:
 
 1. **Revert first.** Roll back the offending change. Don't fix forward under pressure.
-2. **Postmortem.** What was the brief? What did the agent decide silently? What checkpoint would have caught it? Was the trigger missing from the yellow-tier list, or did the agent misclassify the situation?
-3. **Update.** Add the failure mode to `AGENTS.md`'s case studies. If the cause is in the autopilot plugin (missed regex, wrong tier classification), update the plugin and bump its version.
+2. **Postmortem.** Use [`postmortems/TEMPLATE.md`](./postmortems/TEMPLATE.md). 4-category classification (under-gated / over-gated / user judgment / model failure) drives the follow-up.
+3. **Update.** Add the failure mode to `AGENTS.md`'s case studies. If the cause is in the autopilot plugin (missed regex, wrong tier classification), update the plugin and bump its version (per [ADR-0011](./adr/0011-eval-harness-design.md) — add a regression eval task too).
 4. **Backfill an ADR if the fix represents a new decision.**
+
+Active postmortem index: [`postmortems/README.md`](./postmortems/README.md).
 
 ---
 
-## Deferred
+## Promoted from deferred (now shipping)
 
-These were evaluated for v0.1 but not included:
+Originally deferred at v0.1, promoted on 2026-05-18 after the gap-analysis sweep:
 
-- **Eval / measurement loop.** Requires ≥3 plugin iterations to compare; revisit at v0.2.
-- **Cost / budget governance.** Token spend isn't load-bearing yet; revisit when it is.
-- **Human-side onboarding for HITL.** The team is one person; revisit when it grows.
-- **Audit trail / transcript persistence.** Useful for retros but no consumer yet.
+- **Eval harness** ([ADR-0011](./adr/0011-eval-harness-design.md)) — at [`../evals/`](../evals/). Composite score with 4 metrics; runs in <5 min.
+- **Cost / budget governance** ([ADR-0012](./adr/0012-cost-budget-via-tool-call-counter.md)) — tool-call counter with yellow (50) / red (150) thresholds, hook-enforced. `/budget` command for status.
+- **Audit trail** ([ADR-0009](./adr/0009-audit-trail-mechanism.md)) — PostToolUse JSONL log + `decision-log` skill + `/autopilot-review` command.
 
-When any of these moves from "deferred" to "active", it becomes its own ADR and a section here.
+## Still deferred
+
+- **Human-side onboarding for HITL.** Team is one person; revisit when it grows.
+
+When any deferred component activates, it gets its own ADR and a section here.
 
 ---
 
@@ -141,6 +146,12 @@ See [`adr/`](./adr/). Numbered in order. Append-only per [`../standards/11-adrs.
 | [0005](./adr/0005-both-entry-modes-for-autopilot.md) | Both entry modes for autopilot (slash command + env var) |
 | [0006](./adr/0006-hooks-as-sole-enforcement-layer.md) | Hooks as the sole enforcement layer for destructive ops |
 | [0007](./adr/0007-prefer-subagents-over-human-questions.md) | Prefer subagents over human questions when researchable |
+| [0008](./adr/0008-context-management-strategy.md) | Context management strategy for autopilot |
+| [0009](./adr/0009-audit-trail-mechanism.md) | Audit trail mechanism (hook + decision log) |
+| [0010](./adr/0010-task-type-specific-commands.md) | Task-type-specific autopilot commands |
+| [0011](./adr/0011-eval-harness-design.md) | Eval harness for measuring plugin changes |
+| [0012](./adr/0012-cost-budget-via-tool-call-counter.md) | Cost/budget governance via tool-call counter |
+| [0013](./adr/0013-cross-platform-node-helper.md) | Cross-platform Node helper for hooks |
 
 ---
 

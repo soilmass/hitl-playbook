@@ -42,3 +42,11 @@ Harder:
 Constrains:
 - The subagent fleet (`scout`, `verifier`) is the load-bearing alternative to asking the human. Adding new subagents requires updating `autopilot/SKILL.md` to point at them so the main agent knows to prefer them.
 - Subagents are read-only / research-only by design. If a subagent ever needs write access, this ADR should be revisited — write-capable subagents change the trust model significantly.
+
+## Amendment — 2026-05-18
+
+Implementation correction (decision unchanged). The original [`autopilot/SKILL.md`](../../plugins/autopilot/skills/autopilot/SKILL.md) referenced subagents using `[[verifier]]` / `[[scout]]` syntax. Verification against Claude Code docs revealed that `[[name]]` is the *skills* linking format; subagents are invoked either by description-match (auto-delegation) or explicit `@agent-name` mention. The skill has been updated to use `@agent-scout` / `@agent-verifier` mentions, which force delegation reliably.
+
+This amendment does not change the decision — subagents are still preferred over human questions for researchable answers. It corrects the wiring that made the preference unreachable.
+
+See also [ADR-0008](./0008-context-management-strategy.md) for *when* to spawn vs. read directly.

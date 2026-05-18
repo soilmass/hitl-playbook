@@ -6,7 +6,9 @@ Project-specific reference docs that build on the playbook's 12 standards. The s
 
 - **[`hitl-framework.md`](./hitl-framework.md)** — Human-in-the-loop development methodology. Extends standard 12 (AI Agent Collaboration) with the in-task supervision loop.
 - **[`autopilot-plugin.md`](./autopilot-plugin.md)** — Canonical reference for the autopilot plugin. The plugin source lives at [`../plugins/autopilot/`](../plugins/autopilot/); this doc explains what it implements and why.
-- **[`adr/`](./adr/)** — Architecture Decision Records, one per significant decision. Append-only per [`../standards/11-adrs.md`](../standards/11-adrs.md).
+- **[`adr/`](./adr/)** — Architecture Decision Records (13 to date). Append-only per [`../standards/11-adrs.md`](../standards/11-adrs.md).
+- **[`postmortems/`](./postmortems/)** — Failure write-ups for autopilot runs that shipped bad changes. Drives concrete follow-ups (new triggers, regex additions, eval regressions).
+- **[`../evals/`](../evals/)** — Lightweight Python eval harness for measuring whether plugin changes improve or regress agent behavior. Composite score across appropriate-ask, false-block, silent-decision, and handback-quality metrics.
 
 ## Reading order
 

@@ -55,6 +55,52 @@ When blocked, report what you wanted to do, why, and let the human run it themse
 - **Ask once, well.** Batch related decisions into a single AskUserQuestion call. Don't ask three questions in a row.
 - **Prefer subagents over questions.** If a question could be answered by reading more code or docs, invoke the `scout` subagent (via `@agent-scout`) or the `verifier` subagent (via `@agent-verifier`) instead of asking the human. Auto-discovery by description is unreliable; explicit `@agent-name` mention forces delegation.
 - **Handback every time.** When done or blocked, produce a [[handback]] report.
+- **Log silent decisions.** Every yellow-tier-adjacent choice you make without surfacing AskUserQuestion must be appended to the [[decision-log]] in real time. The end-of-task handback is reconstruction; the decision log is contemporaneous.
+
+## Context management
+
+Long autopilot runs fail by drowning the main context window. Manage it deliberately.
+
+### Subagent vs main-context heuristics
+
+Spawn the `scout` or `verifier` subagent (via `@agent-scout` / `@agent-verifier`) when **any** of:
+
+- **Breadth:** the question requires touching >5 files just to answer (use `scout`).
+- **Depth:** a single file >1500 lines you only need a summary of.
+- **Throwaway exploration:** wide grep for one fact whose intermediate matches won't inform later decisions.
+- **Verification before commitment:** about to make a non-trivial edit or pick between approaches (use `verifier`).
+
+Do NOT spawn for:
+- Reading 1–3 files you already know the path of (`Read` is cheaper than spawn overhead).
+- Quick `Grep` for a known symbol.
+- Anything where the raw file content will be edited next — you'll need it in main context anyway.
+
+Rule of thumb: **if the output is a synthesis, delegate; if it's the raw bytes, read directly.**
+
+### Compaction triggers
+
+Don't rely solely on auto-compaction. Proactively summarize-and-discard when:
+
+- A research phase ends and the next phase is editing (write findings into a brief mental summary; don't re-grep).
+- Tool-call count crosses ~30 since the last checkpoint.
+- Approaching ~50% of the context window.
+
+Signal compaction is overdue: you find yourself scrolling past long tool results to remember the brief.
+
+### Subagent output handling
+
+Subagents return one final message. Treat it as authoritative:
+
+- Quote only load-bearing claims into your working notes (file paths, function signatures, the specific answer).
+- Do NOT re-invoke the subagent to "double-check"; spawn `verifier` with a different framing.
+- Per [`adr-0007`](../../../docs/adr/0007-prefer-subagents-over-human-questions.md), flag in the handback which decisions rested on subagent output.
+
+### Main-context hygiene
+
+- **Read narrowly:** use `Read` with `offset`/`limit` when you know the region. Avoid full-file reads of >500-line files when a 50-line window suffices.
+- **Search before reading:** a `Grep` returning 3 line matches beats a `Read` returning 800 lines.
+- **One pass per file:** don't re-Read a file you edited — the harness tracks state.
+- **Discard transcripts:** after a subagent returns, the spawn cost is sunk; don't paraphrase its full transcript into your own reasoning.
 
 ## Common failure modes to avoid
 

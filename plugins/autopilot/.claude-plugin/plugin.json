@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "High-autonomy mode with surgical human-in-the-loop gates. Proceeds without asking on safe ops, surfaces structured AskUserQuestion checkpoints at branch points, and is hard-stopped from destructive ops by hooks.",
   "author": {
-    "name": "Edison Steele"
+    "name": "Edison Steele",
+    "email": "edisonsteele@gmail.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/edisonsteele/web-engineering-playbook/tree/main/plugins/autopilot",
+  "keywords": ["autopilot", "hitl", "human-in-the-loop", "agent-governance", "claude-code"],
+  "engines": {
+    "claude-code": ">=2.0.0"
   }
 }

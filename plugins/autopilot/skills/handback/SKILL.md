@@ -27,6 +27,10 @@ When autopilot mode completes a task (or is fully blocked), produce a handback i
 
 **Open questions:**
 - <anything you'd ask if the loop continued>
+
+**Audit trail:** `.claude/autopilot-logs/<session-id>.md` (decisions) + `.jsonl` (tool calls). Run `/autopilot-review` to inspect.
+
+**Budget:** <N>/<RED> tool calls used (<elapsed>m). Run `/budget` for breakdown.
 ```
 
 ## Format (when blocked)

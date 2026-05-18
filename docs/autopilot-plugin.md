@@ -3,6 +3,7 @@
 **Source:** [`../plugins/autopilot/`](../plugins/autopilot/)
 **Implements:** [`hitl-framework.md`](./hitl-framework.md)
 **Status:** v0.1 (2026-05-18)
+**Changelog:** [`../plugins/autopilot/CHANGELOG.md`](../plugins/autopilot/CHANGELOG.md)
 
 Canonical reference for what the autopilot plugin contains, how each piece works, and why.
 
@@ -16,84 +17,78 @@ A Claude Code plugin for high-autonomy work with surgical human-in-the-loop gate
 
 ## File-by-file
 
-### `.claude-plugin/plugin.json`
+### Plugin metadata
 
-Plugin metadata. Required fields: `name`, `version`, `description`. Optional but recommended: `author`. See [Claude Code plugins reference](https://code.claude.com/docs/en/plugins-reference) for the full schema.
+**`.claude-plugin/plugin.json`** — name, version, description, author, license (MIT), keywords, `engines.claude-code` compatibility range.
 
-### `skills/autopilot/SKILL.md`
+### Skills
 
-The operating philosophy. Defines:
+**`skills/autopilot/SKILL.md`** — operating philosophy: three tiers (green / yellow / red), six categorical yellow-tier triggers, context-management heuristics, operating principles, common failure modes. Loaded by `/autopilot` command and the `CLAUDE_AUTOPILOT=1` SessionStart hook. See [ADR-0002](./adr/0002-three-tier-action-classification.md), [ADR-0004](./adr/0004-categorical-ask-triggers.md), [ADR-0007](./adr/0007-prefer-subagents-over-human-questions.md), [ADR-0008](./adr/0008-context-management-strategy.md).
 
-- The three tiers (green / yellow / red) and what falls in each.
-- The categorical yellow-tier triggers (scope drift, architectural choice, ambiguity, external effect, irreversibility, budget tick).
-- Operating principles: status not narration, ask once well, prefer subagents over questions, don't gold-plate, don't work around hooks.
-- Common failure modes to avoid: over-asking, under-asking, sycophantic acceptance, hook circumvention.
+**`skills/checkpoint-format/SKILL.md`** — required shape for every yellow-tier `AskUserQuestion` call: status preamble, concrete question, 2–4 options with consequence descriptions, recommended first. Templates for architectural choice, scope confirmation, budget tick, ambiguity resolution, pre-irreversible action. See [ADR-0003](./adr/0003-askuserquestion-as-exclusive-hitl-surface.md).
 
-Loaded by either entry mode:
-- The `/autopilot <task>` command (per-task).
-- The SessionStart hook when `CLAUDE_AUTOPILOT=1` (always-on).
+**`skills/handback/SKILL.md`** — end-of-task report format. `Done`/`Blocked` headline + Changed / Skipped / Assumed / Verify-before-merging / Open-questions / Audit-trail / Budget. The **Assumed** section is the load-bearing audit trail for silent decisions.
 
-See [ADR-0002](./adr/0002-three-tier-action-classification.md), [ADR-0004](./adr/0004-categorical-ask-triggers.md), [ADR-0007](./adr/0007-prefer-subagents-over-human-questions.md).
+**`skills/decision-log/SKILL.md`** — append a markdown entry per silent yellow-tier-adjacent decision in real time. Complements handback: handback is end-of-task reconstruction; decision log is contemporaneous. See [ADR-0009](./adr/0009-audit-trail-mechanism.md).
 
-### `skills/checkpoint-format/SKILL.md`
+### Commands
 
-The required format for every yellow-tier `AskUserQuestion` call. Contains:
+**`commands/autopilot.md`** — generic per-task entry: `/autopilot <task description>`. See [ADR-0005](./adr/0005-both-entry-modes-for-autopilot.md).
 
-- The required shape (status preamble, concrete question, 2–4 options, recommended first).
-- Templates for question types: architectural choice, scope confirmation, budget tick, ambiguity resolution, pre-irreversible action.
-- Anti-patterns: vague "should I proceed?", asking after acting, more than 4 options, prose questions.
+**`commands/autopilot-bugfix.md`** — bugfix-specific: pause before non-test edit if bug not reproduced; block test edits in same diff as production fix. See [ADR-0010](./adr/0010-task-type-specific-commands.md).
 
-See [ADR-0003](./adr/0003-askuserquestion-as-exclusive-hitl-surface.md).
+**`commands/autopilot-refactor.md`** — refactor-specific: pause on public API changes; block test edits alongside refactor.
 
-### `skills/handback/SKILL.md`
+**`commands/autopilot-feature.md`** — feature-specific: pause after plan, on architectural forks, before new top-level deps / routes / env vars / schema.
 
-End-of-task report format. Two variants:
+**`commands/autopilot-deps.md`** — dependency-specific: pause on major bumps, large lockfile churn, new top-level deps.
 
-- **Done:** headline + Changed / Skipped / Assumed / Verify before merging / Open questions.
-- **Blocked:** Blocked headline + Did / Tried / Need from you.
+**`commands/autopilot-tests.md`** — test-specific: block edits outside test directories; surface latent bugs without silently fixing.
 
-The **Assumed** section is the load-bearing audit trail for silent decisions made in autopilot mode.
+**`commands/autopilot-chore.md`** — chore-specific: block semantic edits when brief is format-only; more aggressive budget ticks.
 
-### `commands/autopilot.md`
+**`commands/checkpoint.md`** — force an immediate checkpoint mid-task: `/checkpoint`.
 
-Slash command for per-task entry: `/autopilot <task description>`. Loads the autopilot skill, restates the task, surfaces foreseeable yellow-tier decisions up front, then proceeds.
+**`commands/autopilot-review.md`** — `/autopilot-review [session-id]` — displays the decision log + tool-call summary for the latest (or specified) session.
 
-See [ADR-0005](./adr/0005-both-entry-modes-for-autopilot.md).
+**`commands/budget.md`** — `/budget` — prints current session's tool-call count vs. yellow/red thresholds, breakdown by tool, elapsed time, status. See [ADR-0012](./adr/0012-cost-budget-via-tool-call-counter.md).
 
-### `commands/checkpoint.md`
+### Subagents
 
-Slash command to force an immediate checkpoint mid-task: `/checkpoint`. Produces a status + plan + `AskUserQuestion` with a continue option and 1-2 redirect options.
+**`agents/verifier.md`** — read-only second opinion. Tools: Read, Grep, Glob, Bash. 10-point check covering hallucinated APIs, framework drift, fabricated comments, claimed-but-unrun verification, scope creep, security anti-patterns, race conditions, ADR-aware drift. Used instead of asking the human "is this correct?".
 
-### `agents/verifier.md`
+**`agents/scout.md`** — research agent. Tools: Read, Grep, Glob, WebFetch, WebSearch, Bash. Used instead of asking the human "where is X?" / "what does Y do?". Returns synthesis (~300 word cap), not raw search results.
 
-Read-only subagent for independent verification. Tools: Read, Grep, Glob, Bash. Used instead of asking the human "is this correct?".
+### Hooks
 
-Output format: Verdict (Pass / Pass with notes / Fail) + concrete issues + non-blocking notes + an explicit "did not verify" list so the main agent doesn't assume false coverage.
+**`hooks/hooks.json`** — registers all hooks. Invokes the Node guard for each mode. See [ADR-0013](./adr/0013-cross-platform-node-helper.md).
 
-### `agents/scout.md`
+**`hooks/guard.mjs`** — single Node helper, five modes:
 
-Research subagent. Tools: Read, Grep, Glob, WebFetch, WebSearch, Bash. Used instead of asking the human "where is X?" or "what does Y do?". Returns synthesis, not raw search results, capped at ~300 words.
+1. **`pretool-bash`** — regex blocks destructive bash patterns. 13 hardened pattern categories covering alt-deletion tools (`find -delete`, `dd`, `shred`, `truncate`), quoted/path-prefixed `rm`, git alias indirection, force-push short flags, publish commands, SQL via client tools only, eval/source at command position, env hijack. PATH pinned, `LD_PRELOAD`/`BASH_ENV` unset inside guard.
+2. **`pretool-write`** — blocks Writes outside `cwd` and `/tmp`. Paths canonicalized via `realpath` to defeat `..` traversal.
+3. **`pretool-budget`** — reads tool-call counter, warns to stderr at yellow threshold (50) and exits 2 at red (150). Thresholds via `AUTOPILOT_BUDGET_YELLOW` / `AUTOPILOT_BUDGET_RED` env vars.
+4. **`posttool-log`** — appends redacted JSONL entry per tool call to `.claude/autopilot-logs/<session-id>.jsonl`; increments budget counter at `.budget`.
+5. **`session-start`** — env-var-gated (`CLAUDE_AUTOPILOT=1`); injects autopilot mode instruction.
 
-See [ADR-0007](./adr/0007-prefer-subagents-over-human-questions.md).
+### Tests
 
-### `hooks/hooks.json`
+**`test/run-hook-tests.sh`** — 85-case regression suite. Sources the live guard so the suite can't drift from the implementation. Runs on Linux + macOS in CI via [`../../.github/workflows/autopilot-ci.yml`](../../.github/workflows/autopilot-ci.yml).
 
-The enforcement layer for red-tier operations. Three hooks:
+### Top-level
 
-1. **PreToolUse on `Bash`** — regex blocks destructive patterns: `rm -rf`, force-push (including `-f`, `-fu`, `-uf` short forms), `git reset --hard`, `git clean -fd`, publish commands (`npm`, `pnpm`, `yarn`), `gh pr merge`, `gh release create`, `--no-verify`, `DROP TABLE`, `TRUNCATE TABLE`.
-2. **PreToolUse on `Write`** — blocks writes outside the project's `cwd` and `/tmp`.
-3. **SessionStart** — if `CLAUDE_AUTOPILOT=1` is set in the environment, injects the autopilot mode instruction into the session via `additionalContext`. No-op otherwise.
+**`README.md`** — install + verify + first task FTUX entry. Points here for the full reference.
 
-The Bash regex is non-trivial due to short-flag combination handling (`-fu` and `-uf` must block but `feature-fix` must not). See [ADR-0006](./adr/0006-hooks-as-sole-enforcement-layer.md) for why this is the *sole* enforcement layer.
+**`CHANGELOG.md`** — Keep a Changelog format. Includes the versioning policy: MAJOR = removes a pause; MINOR = adds a pause; PATCH = bug fix. Behavior callouts on every entry that shifts pause behavior.
 
 ---
 
 ## What's intentionally NOT in the plugin
 
-- **`settings.json` at plugin root.** Claude Code only honors `agent` and `subagentStatusLine` keys there; `permissions.allow` / `permissions.deny` are silently ignored. The plugin cannot ship permissions. See [ADR-0006](./adr/0006-hooks-as-sole-enforcement-layer.md).
-- **A second enforcement layer.** The hook regex is the only guard. For defense in depth, install instructions recommend mirroring the denylist into the user's own `~/.claude/settings.json`.
-- **Eval harness, cost governance, automated postmortem.** Deferred per [`hitl-framework.md`](./hitl-framework.md).
-- **A README.md.** The plugin's behavior is documented here, not duplicated in the plugin directory.
+- **`settings.json` at plugin root.** Claude Code only honors `agent` and `subagentStatusLine` keys there; permissions are silently ignored. The plugin cannot ship permissions. See [ADR-0006](./adr/0006-hooks-as-sole-enforcement-layer.md).
+- **A second enforcement layer.** The hook is the only guard. For defense in depth, install instructions recommend mirroring the destructive-command patterns into the user's own `~/.claude/settings.json`. The hook is NOT a security boundary against adversarial/compromised models.
+- **Wall-clock time and token budgeting.** Only tool-call count is tracked in v0.1. See [ADR-0012](./adr/0012-cost-budget-via-tool-call-counter.md).
+- **Automated postmortem capture.** Template ships at [`./postmortems/TEMPLATE.md`](./postmortems/TEMPLATE.md); filling it remains a human step.
 
 ---
 
@@ -104,25 +99,34 @@ The Bash regex is non-trivial due to short-flag combination handling (`-fu` and 
 /plugin install /path/to/web-engineering-playbook/plugins/autopilot
 
 # Verify
-/help    # /autopilot and /checkpoint should appear
+/help    # /autopilot, /checkpoint, /budget, /autopilot-review,
+         # and 6 /autopilot-<type> commands should appear
 
 # Optional: enable always-on mode
 export CLAUDE_AUTOPILOT=1
 
+# Optional: tune budget thresholds
+export AUTOPILOT_BUDGET_YELLOW=80
+export AUTOPILOT_BUDGET_RED=200
+
 # Optional: add a defense-in-depth denylist to your own settings.json
-# Mirror the patterns in plugins/autopilot/hooks/hooks.json
+# Mirror the destructive patterns from plugins/autopilot/hooks/guard.mjs
 ```
 
 ---
 
 ## Verification
 
-The Bash hook regex is tested against 23 cases — 15 destructive that must block, 8 safe that must allow (including tricky branch names like `feature-fix` and `my-foo-branch`). All pass.
+```bash
+bash plugins/autopilot/test/run-hook-tests.sh
+```
 
-Re-running the verification suite is currently a manual exercise — extract the hook command from `hooks/hooks.json` and feed test inputs via `jq`. A packaged script is a known TODO; see [`hitl-framework.md`](./hitl-framework.md) component 5.
+85 cases covering destructive patterns, bypass attempts from a focused security review (alternate deletion tools, quoted/path-prefixed `rm`, eval/source/bash-c/python-c indirection, env hijack, SQL via client tools), edge-case safe commands that must not false-block (branch names containing `force`/`fix`/`foo`, prose like `echo 'drop table is bad'`), and Write-path traversal.
+
+Currently 85/85 pass. CI runs the same suite on Linux + macOS matrix.
 
 ---
 
 ## Version history
 
-- **v0.1 (2026-05-18)** — initial cut. Implements framework components 1, 2, 4, 6, and partial 5/7. Components deferred: eval (5 programmatic), automated postmortem (7 automated), audit trail.
+- **v0.1.0 (2026-05-18)** — initial cut. See [`CHANGELOG.md`](../plugins/autopilot/CHANGELOG.md) for the full inventory.
