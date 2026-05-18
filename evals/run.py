@@ -44,13 +44,17 @@ RESULTS_DIR = REPO_ROOT / "evals" / "results"
 def _setup_workspace(fixture: dict) -> Path:
     """
     Create an isolated cwd for one task run, seeded with any files
-    declared in the fixture's optional `setup:` block.
+    declared in the fixture's optional `setup:` block (path+content pairs)
+    and any shell commands in `setup_commands:` (run sequentially after
+    files exist; used for `git init`, dependency install, etc.).
     """
     work_dir = Path(tempfile.mkdtemp(prefix=f"autopilot-eval-{fixture['id']}-"))
     for entry in fixture.get("setup", []) or []:
         path = work_dir / entry["path"]
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(entry.get("content", ""))
+    for cmd in fixture.get("setup_commands", []) or []:
+        subprocess.run(cmd, shell=True, cwd=work_dir, check=False, capture_output=True)
     return work_dir
 
 
@@ -310,6 +314,7 @@ def run_suite(
     max_budget_usd: float,
     use_judge: bool,
     keep_work_dirs: bool,
+    filter_substr: str = None,
 ):
     judge = make_judge() if use_judge else None
     if use_judge and judge is None:
@@ -323,7 +328,12 @@ def run_suite(
     }
 
     total_cost = 0.0
-    for fixture_path in sorted(tasks_dir.glob("*.yaml")):
+    fixture_paths = sorted(tasks_dir.glob("*.yaml"))
+    if filter_substr:
+        fixture_paths = [p for p in fixture_paths if filter_substr in p.name]
+        if not fixture_paths:
+            sys.exit(f"no fixture in {tasks_dir} matched filter '{filter_substr}'")
+    for fixture_path in fixture_paths:
         fixture = yaml.safe_load(fixture_path.read_text())
         task_id = fixture["id"]
         per_run = []
@@ -376,10 +386,12 @@ def main():
     ap.add_argument("--max-budget-usd", type=float, default=0.20, help="per-task cost cap")
     ap.add_argument("--judge", action="store_true", help="use Sonnet judge for handback scoring")
     ap.add_argument("--keep-work-dirs", action="store_true", help="don't delete per-task tmpdirs")
+    ap.add_argument("--filter", help="only run fixtures whose filename contains this substring (e.g. '02' or 'scope')")
     args = ap.parse_args()
     run_suite(
         args.version, Path(args.tasks), args.runs, Path(args.plugin_root),
         args.model, args.max_budget_usd, args.judge, args.keep_work_dirs,
+        filter_substr=args.filter,
     )
 
 

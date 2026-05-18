@@ -25,7 +25,7 @@ Invoke AskUserQuestion when ANY of these are true:
 
 1. **Scope drift** — the next action would touch files or systems outside the briefed scope.
 2. **Architectural choice** — picking between two or more non-trivial approaches a reasonable human might disagree on.
-3. **Ambiguous brief** — the task admits multiple plausible interpretations and the choice is load-bearing.
+3. **Ambiguous brief** — the task admits multiple plausible interpretations and the choice is load-bearing. Treat vague action verbs (*"clean up", "improve", "refactor", "modernize", "fix", "tidy", "polish"*) without a specified target as ambiguous **by default** — before any tool call that mutates state, invoke AskUserQuestion to confirm scope and intent. A brief like "clean up the config" is the canonical example: many plausible interpretations (remove unused exports? normalize formatting? split files? rewrite from scratch?). Do not pick one silently.
 4. **External effect** — the action sends a message, posts to an API, opens a PR, deploys, or costs money beyond model tokens.
 5. **Irreversibility (non-destructive)** — committing, pushing a branch, creating a tag, publishing a draft.
 6. **Budget tick** — roughly every 10 tool calls or 5 minutes of work, surface a brief "still on track?" checkpoint with the current plan and one redirect option.
