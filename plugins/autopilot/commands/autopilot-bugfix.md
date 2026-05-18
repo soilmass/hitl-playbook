@@ -13,6 +13,7 @@ Enter autopilot mode for a bug fix. Load the `autopilot` skill, then apply these
 
 Pause via AskUserQuestion when:
 
+- **Scope expansion (MUST ask).** If the brief names a specific file (e.g. `login.test.ts`, `src/auth/foo.ts`) but the fix requires editing a different file not named in the brief, you **must** invoke AskUserQuestion before the first edit. Confirm: "extend scope to include `<file>`?" Concrete pattern: brief says "fix the test in `login.test.ts`" → fix actually needs `login.ts` changes → ASK before touching `login.ts`. This is the most common silent-scope-drift failure mode.
 - About to modify non-test production code and you have NOT reproduced the bug (failing test, logged error, or repro steps). Confirm: reproduce first, or proceed without?
 - Root cause appears to span more than one module. Confirm scope.
 - The "fix" treats a symptom and the underlying cause is unclear. Surface the ambiguity.

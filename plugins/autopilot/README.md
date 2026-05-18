@@ -37,6 +37,15 @@ export CLAUDE_AUTOPILOT=1
 
 A SessionStart hook then loads autopilot for every session in that environment. Recommended only after you've done a few `/autopilot` runs and trust the behavior.
 
+## Recommended model
+
+**Sonnet or stronger.** Verified via the eval harness: Haiku consistently ignores categorical yellow-tier triggers (0 asks across 6 runs on the scope-drift fixture); Sonnet honors them (2/2). The plugin's HITL guarantees are model-dependent. Haiku is acceptable for trivial green-tier work but isn't reliable enough for the supervised mode the plugin is designed around.
+
+```bash
+# In your Claude Code config or session: prefer Sonnet
+claude --model sonnet ...
+```
+
 ## Defense in depth (optional)
 
 The plugin's hook is the only enforcement layer. For belt-and-suspenders, mirror the destructive-command patterns into your own `~/.claude/settings.json` `permissions.deny` list. The hook is not a real security boundary — it stops accidents and well-behaved agents, not a compromised model.
