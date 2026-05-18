@@ -15,7 +15,7 @@ jobs:
   lint-json:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Validate all plugin JSON parses
         run: |
           find plugins/autopilot -name '*.json' -print0 \
@@ -24,8 +24,8 @@ jobs:
   lint-frontmatter:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with: { python-version: '3.x' }
       - name: Install pyyaml
         run: pip install pyyaml
@@ -60,8 +60,8 @@ jobs:
   lint-markdown:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DavidAnson/markdownlint-cli2-action@v18
+      - uses: actions/checkout@v6
+      - uses: DavidAnson/markdownlint-cli2-action@v23
         with:
           globs: 'plugins/autopilot/**/*.md docs/**/*.md'
           config: '.markdownlint.json'
@@ -74,16 +74,16 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: '22' }
       - name: Run hook regression suite
         run: bash plugins/autopilot/test/run-hook-tests.sh
 
   link-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: lycheeverse/lychee-action@v2
         with:
           args: --offline --include-fragments docs/ plugins/autopilot/
