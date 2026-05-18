@@ -83,6 +83,15 @@ A Claude Code plugin for high-autonomy work with surgical human-in-the-loop gate
 
 ---
 
+## Known limitations
+
+- **`AskUserQuestion` is non-functional in `claude --print` (non-interactive) mode.** The tool fires but Claude Code returns an immediate `is_error: true` response (no human to answer). The agent then reverts to prose questions, violating the autopilot skill's "no prose questions" rule. Autopilot is fundamentally an **interactive-mode** plugin; CI/batch/eval contexts get degraded behavior. See [ADR-0014](./adr/0014-askuserquestion-print-mode-limitation.md).
+- **Hook cannot be a security boundary against an adversarial or compromised model.** Hardened regex + Node guard stop accidents and well-behaved agents; novel indirection paths (shell-via-Python, custom CLIs) require OS-level sandboxing. See [ADR-0006](./adr/0006-hooks-as-sole-enforcement-layer.md).
+- **The `decision-log` skill is not reliably invoked.** Even with explicit "invoke the Skill tool with `skill: 'autopilot:decision-log'`" instructions in `autopilot/SKILL.md`, the model frequently doesn't recognize it's making a silent decision and so doesn't reach for the skill. The end-of-task handback's `Assumed:` field remains the load-bearing audit surface.
+- **Architectural-fork yellow trigger is rationalizable.** Sonnet can talk itself out of asking by reading the brief as "a clear directive" or claiming the choice is "obvious." Stronger language in the skill helps but doesn't fully prevent. Users wanting bulletproof always-ask behavior should write briefs that leave the choice explicitly open.
+
+---
+
 ## What's intentionally NOT in the plugin
 
 - **`settings.json` at plugin root.** Claude Code only honors `agent` and `subagentStatusLine` keys there; permissions are silently ignored. The plugin cannot ship permissions. See [ADR-0006](./adr/0006-hooks-as-sole-enforcement-layer.md).
