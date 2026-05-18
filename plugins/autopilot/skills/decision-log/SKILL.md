@@ -57,4 +57,4 @@ Keep entries terse — three to five lines. The reviewer scans this file top-to-
 
 ## Why this exists
 
-Component 4 of the HITL framework ([`../../docs/hitl-framework.md`](../../../docs/hitl-framework.md)) requires the **Assumed** handback field as the audit trail for silent decisions. The decision log is its companion: assumptions captured *as they form*, not reconstructed at task end. End-of-task reconstruction loses context.
+Component 4 of the HITL framework ([`../../../../docs/hitl-framework.md`](../../../../docs/hitl-framework.md)) requires the **Assumed** handback field as the audit trail for silent decisions. The decision log is its companion: assumptions captured *as they form*, not reconstructed at task end. End-of-task reconstruction loses context.

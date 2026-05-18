@@ -93,7 +93,7 @@ Subagents return one final message. Treat it as authoritative:
 
 - Quote only load-bearing claims into your working notes (file paths, function signatures, the specific answer).
 - Do NOT re-invoke the subagent to "double-check"; spawn `verifier` with a different framing.
-- Per [`adr-0007`](../../../docs/adr/0007-prefer-subagents-over-human-questions.md), flag in the handback which decisions rested on subagent output.
+- Per [`adr-0007`](../../../../docs/adr/0007-prefer-subagents-over-human-questions.md), flag in the handback which decisions rested on subagent output.
 
 ### Main-context hygiene
 

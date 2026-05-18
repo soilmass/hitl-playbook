@@ -9,7 +9,7 @@
 // Real enforcement requires OS-level sandboxing.
 
 import { readFileSync, realpathSync, mkdirSync, appendFileSync, existsSync, writeFileSync } from 'node:fs';
-import { resolve, sep, dirname, join } from 'node:path';
+import { resolve, sep, dirname, join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const BUDGET_YELLOW = Number(process.env.AUTOPILOT_BUDGET_YELLOW) || 50;
@@ -95,27 +95,43 @@ function checkBash(input) {
 
 // --- pretool-write --------------------------------------------------------
 
+// Resolve a path through symlinks even if the file doesn't exist yet.
+// Walks up to the nearest existing ancestor, realpaths that, then rejoins.
+function realpathOfPossiblyMissing(p) {
+  const abs = resolve(p);
+  let cur = abs, tail = [];
+  while (true) {
+    try { return tail.length ? join(realpathSync(cur), ...tail) : realpathSync(cur); }
+    catch {
+      const parent = dirname(cur);
+      if (parent === cur) return abs; // hit root without resolving
+      tail.unshift(basename(cur));
+      cur = parent;
+    }
+  }
+}
+
 function checkWrite(input) {
   const filePath = String(input?.tool_input?.file_path ?? '');
   if (!filePath) return;
 
-  let realPath, realCwd, realTmp;
+  let realPath, realCwd;
+  const safeRoots = [];
   try {
-    // realpath the parent if file doesn't exist yet
-    const resolved = resolve(filePath);
-    try { realPath = realpathSync(resolved); }
-    catch { realPath = resolved; } // file doesn't exist; use resolved path
+    realPath = realpathOfPossiblyMissing(filePath);
     realCwd = realpathSync(process.cwd());
-    realTmp = realpathSync(tmpdir());
+    safeRoots.push(realCwd);
+    // Allow both /tmp (Linux + macOS symlink) and os.tmpdir() (macOS /var/folders).
+    for (const t of ['/tmp', tmpdir()]) {
+      try { safeRoots.push(realpathSync(t)); } catch {}
+    }
   } catch (e) {
     block(`could not resolve paths for Write check: ${e.message}`);
   }
 
-  const inCwd = realPath === realCwd || realPath.startsWith(realCwd + sep);
-  const inTmp = realPath === realTmp || realPath.startsWith(realTmp + sep);
-
-  if (!inCwd && !inTmp) {
-    block(`blocked Write to '${realPath}' (outside project dir '${realCwd}' and tmp '${realTmp}'). Surface to the human.`);
+  const ok = safeRoots.some(r => realPath === r || realPath.startsWith(r + sep));
+  if (!ok) {
+    block(`blocked Write to '${realPath}' (outside project dir '${realCwd}' and tmp dirs). Surface to the human.`);
   }
 }
 

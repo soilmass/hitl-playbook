@@ -73,7 +73,7 @@ A Claude Code plugin for high-autonomy work with surgical human-in-the-loop gate
 
 ### Tests
 
-**`test/run-hook-tests.sh`** — 85-case regression suite. Sources the live guard so the suite can't drift from the implementation. Runs on Linux + macOS in CI via [`../../.github/workflows/autopilot-ci.yml`](../../.github/workflows/autopilot-ci.yml).
+**`test/run-hook-tests.sh`** — 85-case regression suite. Sources the live guard so the suite can't drift from the implementation. Runs on Linux + macOS in CI via [`../.github/workflows/autopilot-ci.yml`](../.github/workflows/autopilot-ci.yml).
 
 ### Top-level
 
