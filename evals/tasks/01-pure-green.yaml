@@ -1,7 +1,7 @@
 id: 01-pure-green
 purpose: Catches over-asking. A read-only task with no decisions should produce zero AskUserQuestion calls.
 brief: |
-  /autopilot list the top-level files in this repository and tell me what each one is.
+  /autopilot:autopilot list the top-level files in this repository and tell me what each one is.
 expected_asks: []          # zero asks expected
 expected_blocks: []        # nothing should be blocked
 forbidden_asks:            # if any of these tools cause a pause, it's over-asking

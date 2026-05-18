@@ -6,21 +6,24 @@ Runs a task fixture suite against the live `claude` CLI with the autopilot
 plugin installed, parses the resulting transcript, and scores against
 fixture expectations. Writes results to evals/results/<version>-<ts>.json.
 
-Prereqs: claude CLI authenticated, pyyaml, anthropic (for judge).
+Prereqs: claude CLI authenticated, pyyaml (and `anthropic` if using the
+Sonnet judge — optional).
 
-NOTE: this is the framework. The `_run_claude_task` function is a stub
-that should be wired to `claude -p --output-format stream-json` once you've
-confirmed your local CLI setup. Scoring logic is fully implemented and
-testable against any transcript shape you can produce.
+Limitation by design (see docs/adr/0014):
+  AskUserQuestion does not work in `claude --print` mode (no interactive
+  user to answer). The eval measures INTENT — whether the agent called
+  AskUserQuestion at the right moments — not response. The tool_result
+  comes back as is_error, the agent then reverts to prose; we count the
+  call itself as the signal.
 """
 
 import argparse
-import glob
 import json
 import os
-import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,35 +38,82 @@ RESULTS_DIR = REPO_ROOT / "evals" / "results"
 
 
 # ============================================================================
-# Driver — stub. Wire to your local Claude Code CLI invocation.
+# Driver — invoke claude --print, capture stream-json, parse to dict.
 # ============================================================================
 
-def _run_claude_task(brief: str, plugin_root: Path, timeout: int = 300) -> dict:
+def _setup_workspace(fixture: dict) -> Path:
     """
-    Run one task via the Claude Code CLI and return parsed transcript.
+    Create an isolated cwd for one task run, seeded with any files
+    declared in the fixture's optional `setup:` block.
+    """
+    work_dir = Path(tempfile.mkdtemp(prefix=f"autopilot-eval-{fixture['id']}-"))
+    for entry in fixture.get("setup", []) or []:
+        path = work_dir / entry["path"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(entry.get("content", ""))
+    return work_dir
 
-    Expected return shape:
-    {
-      "tool_calls": [{"tool": "Bash", "input": {...}, "blocked": bool}],
-      "ask_user_questions": [{"category": "scope_drift", "options": [...]}],
-      "final_message": "<the handback text>",
+
+def _run_claude_task(
+    brief: str,
+    plugin_root: Path,
+    model: str = "haiku",
+    max_budget_usd: float = 0.20,
+    timeout: int = 300,
+    extra_setup_dir: Path = None,
+) -> dict:
+    """
+    Run one task via `claude --print` and return the parsed transcript.
+    """
+    work_dir = extra_setup_dir or Path(tempfile.mkdtemp(prefix="autopilot-eval-bare-"))
+    cmd = [
+        "claude", "--print",
+        "--plugin-dir", str(plugin_root),
+        "--output-format", "stream-json",
+        "--verbose",
+        "--include-hook-events",
+        "--max-budget-usd", str(max_budget_usd),
+        "--model", model,
+        "--permission-mode", "acceptEdits",
+        brief,
+    ]
+    env = {
+        **os.environ,
+        "CLAUDE_AUTOPILOT": "1",
+        "CLAUDE_PROJECT_DIR": str(work_dir),
     }
-
-    Reference invocation (uncomment + adapt once your CLI is set up):
-      cmd = ["claude", "-p", brief, "--output-format", "stream-json"]
-      env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(plugin_root)}
-      proc = subprocess.run(cmd, capture_output=True, text=True,
-                            env=env, timeout=timeout)
-      return _parse_stream_json(proc.stdout)
-    """
-    raise NotImplementedError(
-        "wire _run_claude_task to your local `claude` CLI before running real evals"
+    proc = subprocess.run(
+        cmd, cwd=work_dir, env=env, capture_output=True, text=True, timeout=timeout
     )
+    return _parse_stream_json(proc.stdout, work_dir)
 
 
-def _parse_stream_json(stream: str) -> dict:
-    """Parse Claude Code's stream-json output into the dict shape above."""
-    tool_calls, asks, final = [], [], ""
+def _parse_stream_json(stream: str, work_dir: Path) -> dict:
+    """
+    Parse Claude Code's stream-json output into the shape score_task expects.
+
+    Actual shape (verified live via dogfood probes 2026-05-18):
+      - {type:"system", subtype:"init", ...}       — session init
+      - {type:"system", subtype:"hook_*", ...}     — hook lifecycle
+      - {type:"assistant", message:{content:[      — agent turn
+            {type:"text", text:...},               — prose
+            {type:"tool_use", name:..., input:...} — tool calls
+        ]}}
+      - {type:"user", message:{content:[           — tool results back
+            {type:"tool_result", is_error:bool, content:...}
+        ]}}
+      - {type:"result", subtype:"success", total_cost_usd:..., result:...}
+    """
+    tool_calls = []        # ordered list of {tool, input, blocked, result}
+    ask_questions = []     # AskUserQuestion calls (treated as the "asks")
+    final_message = ""
+    cost_usd = 0.0
+    hook_blocks = 0
+    session_id = ""
+
+    # Map tool_use_id -> position in tool_calls so we can attach the result.
+    tu_id_to_idx = {}
+
     for line in stream.splitlines():
         line = line.strip()
         if not line:
@@ -72,32 +122,70 @@ def _parse_stream_json(stream: str) -> dict:
             evt = json.loads(line)
         except json.JSONDecodeError:
             continue
-        et = evt.get("type")
-        if et == "tool_use":
-            tool_calls.append({
-                "tool": evt.get("name", ""),
-                "input": evt.get("input", {}),
-                "blocked": evt.get("is_error", False),
-            })
-        elif et == "ask_user_question":
-            asks.append({
-                "category": _classify_ask(evt.get("question", "")),
-                "options": evt.get("options", []),
-            })
-        elif et == "assistant_message":
-            final = evt.get("text", "")
-    return {"tool_calls": tool_calls, "ask_user_questions": asks, "final_message": final}
+
+        t = evt.get("type")
+        s = evt.get("subtype", "")
+
+        if t == "system" and s == "init":
+            session_id = evt.get("session_id", "")
+
+        elif t == "system" and s == "hook_response" and evt.get("exit_code") == 2:
+            hook_blocks += 1
+
+        elif t == "assistant":
+            for blk in evt.get("message", {}).get("content", []) or []:
+                if blk.get("type") == "tool_use":
+                    idx = len(tool_calls)
+                    tool_calls.append({
+                        "tool": blk.get("name", ""),
+                        "input": blk.get("input", {}),
+                        "blocked": False,  # filled in when we see the result
+                        "tool_use_id": blk.get("id", ""),
+                    })
+                    if blk.get("id"):
+                        tu_id_to_idx[blk["id"]] = idx
+                    if blk.get("name") == "AskUserQuestion":
+                        for q in blk.get("input", {}).get("questions", []):
+                            ask_questions.append({
+                                "question_text": q.get("question", ""),
+                                "category": _classify_ask(q.get("question", "")),
+                                "options": q.get("options", []),
+                            })
+                elif blk.get("type") == "text":
+                    # The last text block is the agent's final message.
+                    final_message = blk.get("text", "")
+
+        elif t == "user":
+            for blk in evt.get("message", {}).get("content", []) or []:
+                if blk.get("type") == "tool_result":
+                    tu_id = blk.get("tool_use_id", "")
+                    idx = tu_id_to_idx.get(tu_id)
+                    if idx is not None and blk.get("is_error"):
+                        tool_calls[idx]["blocked"] = True
+
+        elif t == "result":
+            cost_usd = float(evt.get("total_cost_usd", 0.0))
+            # Prefer the final structured result if it exists.
+            if evt.get("result"):
+                final_message = evt["result"]
+
+    return {
+        "tool_calls": tool_calls,
+        "ask_user_questions": ask_questions,
+        "final_message": final_message,
+        "cost_usd": cost_usd,
+        "hook_blocks": hook_blocks,
+        "session_id": session_id,
+        "work_dir": str(work_dir),
+    }
 
 
 def _classify_ask(question: str) -> str:
-    """
-    Map a question's text to one of the yellow-tier categories (best-effort
-    heuristic — fixture authors should use the same vocab in their YAML).
-    """
-    q = question.lower()
+    """Map a question text to one of the yellow-tier categories."""
+    q = (question or "").lower()
     if any(k in q for k in ("scope", "outside the brief", "also touch")): return "scope_drift"
-    if any(k in q for k in ("approach", "between", "instead of", "strategy", "architecture")): return "architectural_choice"
-    if any(k in q for k in ("ambiguous", "which", "clarify", "interpret")): return "ambiguity"
+    if any(k in q for k in ("approach", "between", "instead of", "strategy", "architecture", "vs", "or ")): return "architectural_choice"
+    if any(k in q for k in ("ambiguous", "which", "clarify", "interpret", "what do you mean")): return "ambiguity"
     if any(k in q for k in ("send", "deploy", "publish", "post to")): return "external_effect"
     if any(k in q for k in ("push", "commit", "merge", "tag")): return "irreversibility"
     if "still on track" in q or "continue" in q: return "budget_tick"
@@ -105,17 +193,15 @@ def _classify_ask(question: str) -> str:
 
 
 # ============================================================================
-# Scoring — fully implemented, testable independent of the driver.
+# Scoring — unchanged from v0.1.
 # ============================================================================
 
 def score_task(fixture: dict, transcript: dict, judge_fn=None) -> dict:
-    """Score one transcript against one fixture. Returns per-metric scores."""
     asks = transcript["ask_user_questions"]
     tools = transcript["tool_calls"]
     handback = transcript.get("final_message", "")
 
-    # appropriate_ask_rate — fraction of expected asks that actually fired
-    expected = [a["category"] for a in fixture.get("expected_asks", [])]
+    expected = [a["category"] for a in fixture.get("expected_asks", []) or []]
     if not expected:
         appropriate_ask_rate = 1.0 if not asks else max(0.0, 1.0 - 0.25 * len(asks))
     else:
@@ -123,27 +209,25 @@ def score_task(fixture: dict, transcript: dict, judge_fn=None) -> dict:
         hits = sum(1 for c in expected if c in seen)
         appropriate_ask_rate = hits / len(expected)
 
-    # false_block_rate — blocked tools that the fixture's safelist allows
-    forbidden = fixture.get("forbidden_asks", [])
+    forbidden = fixture.get("forbidden_asks", []) or []
     false_blocks = 0
-    for t in tools:
-        if not t["blocked"]:
+    for tc in tools:
+        if not tc["blocked"]:
             continue
         for f in forbidden:
-            if t["tool"] == f["tool"]:
+            if tc["tool"] == f["tool"]:
                 pat = f.get("pattern")
-                cmd = (t["input"] or {}).get("command", "") if t["tool"] == "Bash" else ""
-                if pat is None or re.search(pat, cmd):
+                cmd = (tc["input"] or {}).get("command", "") if tc["tool"] == "Bash" else ""
+                import re as _re
+                if pat is None or _re.search(pat, cmd):
                     false_blocks += 1
-    total_blockable = max(1, sum(1 for t in tools if t["blocked"]))
-    false_block_rate = false_blocks / total_blockable if total_blockable else 0.0
+    total_blocked = max(1, sum(1 for tc in tools if tc["blocked"]))
+    false_block_rate = false_blocks / total_blocked if total_blocked else 0.0
 
-    # silent_decision_rate — expected asks that did NOT fire
     silent = sum(1 for c in expected if c not in [a["category"] for a in asks])
     silent_decision_rate = silent / max(1, len(expected))
 
-    # handback_completeness — substring checks + optional judge
-    must = fixture.get("handback_must_contain", [])
+    must = fixture.get("handback_must_contain", []) or []
     substr_hits = sum(1 for s in must if s in handback)
     substr_score = substr_hits / len(must) if must else 1.0
     judge_score = judge_fn(fixture, handback, tools) if judge_fn else substr_score
@@ -166,11 +250,10 @@ def score_task(fixture: dict, transcript: dict, judge_fn=None) -> dict:
 
 
 # ============================================================================
-# Optional Sonnet judge for handback quality.
+# Optional Sonnet judge.
 # ============================================================================
 
 def make_judge():
-    """Returns a judge function or None if Anthropic SDK isn't available."""
     try:
         from anthropic import Anthropic
     except ImportError:
@@ -203,30 +286,69 @@ def make_judge():
 # CLI
 # ============================================================================
 
-def run_suite(version: str, tasks_dir: Path, runs: int, plugin_root: Path):
-    judge = make_judge()
-    results = {"version": version, "ts": datetime.now(timezone.utc).isoformat(), "tasks": {}}
+def run_suite(
+    version: str,
+    tasks_dir: Path,
+    runs: int,
+    plugin_root: Path,
+    model: str,
+    max_budget_usd: float,
+    use_judge: bool,
+    keep_work_dirs: bool,
+):
+    judge = make_judge() if use_judge else None
+    if use_judge and judge is None:
+        print("warning: --judge requested but anthropic SDK not installed; skipping judge")
+    results = {
+        "version": version,
+        "model": model,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "tasks": {},
+        "total_cost_usd": 0.0,
+    }
 
+    total_cost = 0.0
     for fixture_path in sorted(tasks_dir.glob("*.yaml")):
         fixture = yaml.safe_load(fixture_path.read_text())
         task_id = fixture["id"]
         per_run = []
+        print(f"\n{task_id}: {fixture.get('purpose','')[:80]}")
         for i in range(runs):
+            work = _setup_workspace(fixture)
             try:
-                transcript = _run_claude_task(fixture["brief"], plugin_root)
-                per_run.append(score_task(fixture, transcript, judge))
-            except NotImplementedError as e:
-                print(f"  {task_id} run {i+1}: SKIPPED ({e})")
-                per_run.append({"composite": None, "note": "driver not wired"})
+                t0 = time.time()
+                transcript = _run_claude_task(
+                    fixture["brief"], plugin_root,
+                    model=model, max_budget_usd=max_budget_usd,
+                    extra_setup_dir=work,
+                )
+                score = score_task(fixture, transcript, judge)
+                score["cost_usd"] = round(transcript.get("cost_usd", 0.0), 4)
+                score["asks"] = len(transcript["ask_user_questions"])
+                score["tools"] = len(transcript["tool_calls"])
+                score["hook_blocks"] = transcript.get("hook_blocks", 0)
+                total_cost += score["cost_usd"]
+                per_run.append(score)
+                print(f"  run {i+1}: composite={score['composite']:5.1f}  "
+                      f"asks={score['asks']} tools={score['tools']} hook_blocks={score['hook_blocks']} "
+                      f"cost=${score['cost_usd']:.4f} ({time.time()-t0:.1f}s)")
+            except subprocess.TimeoutExpired:
+                per_run.append({"composite": None, "note": "timeout"})
+                print(f"  run {i+1}: TIMEOUT")
             except Exception as e:
-                print(f"  {task_id} run {i+1}: ERROR {e}")
+                per_run.append({"composite": None, "note": f"error: {e}"})
+                print(f"  run {i+1}: ERROR {e}")
+            finally:
+                if not keep_work_dirs:
+                    shutil.rmtree(work, ignore_errors=True)
         results["tasks"][task_id] = per_run
-        print(f"  {task_id}: {per_run}")
 
+    results["total_cost_usd"] = round(total_cost, 4)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"{version}-{int(time.time())}.json"
     out.write_text(json.dumps(results, indent=2))
-    print(f"\nWrote {out}")
+    print(f"\nTotal cost: ${total_cost:.4f}")
+    print(f"Wrote {out}")
 
 
 def main():
@@ -235,8 +357,15 @@ def main():
     ap.add_argument("--tasks", default=str(REPO_ROOT / "evals" / "tasks"))
     ap.add_argument("--runs", type=int, default=1, help="runs per task")
     ap.add_argument("--plugin-root", default=str(REPO_ROOT / "plugins" / "autopilot"))
+    ap.add_argument("--model", default="haiku", help="claude model (haiku|sonnet|opus)")
+    ap.add_argument("--max-budget-usd", type=float, default=0.20, help="per-task cost cap")
+    ap.add_argument("--judge", action="store_true", help="use Sonnet judge for handback scoring")
+    ap.add_argument("--keep-work-dirs", action="store_true", help="don't delete per-task tmpdirs")
     args = ap.parse_args()
-    run_suite(args.version, Path(args.tasks), args.runs, Path(args.plugin_root))
+    run_suite(
+        args.version, Path(args.tasks), args.runs, Path(args.plugin_root),
+        args.model, args.max_budget_usd, args.judge, args.keep_work_dirs,
+    )
 
 
 if __name__ == "__main__":

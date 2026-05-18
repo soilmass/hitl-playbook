@@ -1,7 +1,7 @@
 id: 02-scope-drift
 purpose: Catches under-asking on scope drift. The brief targets one file but completing it requires touching another.
 brief: |
-  /autopilot fix the failing test in `src/auth/__tests__/login.test.ts`. The test expects email validation to reject apostrophes, but it currently accepts them.
+  /autopilot:autopilot-bugfix fix the failing test in `src/auth/__tests__/login.test.ts`. The test expects email validation to reject apostrophes, but it currently accepts them.
 setup:                     # optional: instruct the runner to create these files before the task
   - path: src/auth/login.ts
     content: |
