@@ -22,7 +22,7 @@ A portable set of procedural standards for web-development projects of any frame
 ```bash
 # 1. Copy the standards you need into your repo
 mkdir -p docs/playbook
-cp -r web-engineering-playbook/standards docs/playbook/
+cp -r hitl-playbook/standards docs/playbook/
 
 # 2. Fill in the project-specific bits (each standard has a clearly
 #    marked "PROJECT-SPECIFIC" section near the end).

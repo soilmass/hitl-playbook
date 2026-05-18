@@ -7,7 +7,11 @@
     "email": "edisonsteele@gmail.com"
   },
   "license": "MIT",
-  "homepage": "https://github.com/edisonsteele/web-engineering-playbook/tree/main/plugins/autopilot",
+  "homepage": "https://github.com/soilmass/hitl-playbook/tree/main/plugins/autopilot",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/soilmass/hitl-playbook.git"
+  },
   "keywords": ["autopilot", "hitl", "human-in-the-loop", "agent-governance", "claude-code"],
   "engines": {
     "claude-code": ">=2.0.0"

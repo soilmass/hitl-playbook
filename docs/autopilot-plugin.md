@@ -96,7 +96,7 @@ A Claude Code plugin for high-autonomy work with surgical human-in-the-loop gate
 
 ```bash
 # From any project that wants autopilot:
-/plugin install /path/to/web-engineering-playbook/plugins/autopilot
+/plugin install /path/to/hitl-playbook/plugins/autopilot
 
 # Verify
 /help    # /autopilot, /checkpoint, /budget, /autopilot-review,
