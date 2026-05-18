@@ -1,0 +1,90 @@
+name: autopilot CI
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/autopilot/**'
+      - '.github/workflows/autopilot-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/autopilot/**'
+      - '.github/workflows/autopilot-ci.yml'
+
+jobs:
+  lint-json:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate all plugin JSON parses
+        run: |
+          find plugins/autopilot -name '*.json' -print0 \
+            | xargs -0 -I {} sh -c 'echo "checking {}"; jq empty "{}"'
+
+  lint-frontmatter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - name: Install pyyaml
+        run: pip install pyyaml
+      - name: Validate frontmatter on skills/commands/agents
+        run: |
+          python3 - <<'PY'
+          import sys, glob, yaml, pathlib
+          fails = []
+          required = {
+              'skills':   {'name', 'description'},
+              'commands': {'description'},
+              'agents':   {'name', 'description'},
+          }
+          for kind, must in required.items():
+              for path in glob.glob(f'plugins/autopilot/{kind}/**/*.md', recursive=True):
+                  text = pathlib.Path(path).read_text()
+                  if not text.startswith('---'):
+                      fails.append(f'{path}: no frontmatter'); continue
+                  try:
+                      _, fm, _ = text.split('---', 2)
+                      data = yaml.safe_load(fm) or {}
+                  except Exception as e:
+                      fails.append(f'{path}: YAML parse error: {e}'); continue
+                  missing = must - set(data.keys())
+                  if missing:
+                      fails.append(f'{path}: missing keys {missing}')
+          if fails:
+              print('\n'.join(fails)); sys.exit(1)
+          print('All frontmatter valid')
+          PY
+
+  lint-markdown:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v18
+        with:
+          globs: 'plugins/autopilot/**/*.md docs/**/*.md'
+          config: '.markdownlint.json'
+        continue-on-error: true # advisory until rules tuned
+
+  test-hooks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Run hook regression suite
+        run: bash plugins/autopilot/test/run-hook-tests.sh
+
+  link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: --offline --include-fragments docs/ plugins/autopilot/
+          fail: true

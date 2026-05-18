@@ -1,0 +1,24 @@
+# Node
+node_modules/
+
+# Autopilot runtime artifacts (per-session logs, budget state)
+.claude/autopilot-logs/
+.autopilot/
+
+# Eval harness outputs (kept locally, not committed)
+evals/results/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Python
+__pycache__/
+*.pyc
+.venv/
