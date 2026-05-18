@@ -21,27 +21,54 @@ Composite score (0–100): `0.4 * appropriate_ask + 0.3 * (1 - false_block) + 0.
 evals/
 ├── README.md              # this file
 ├── run.py                 # driver — runs tasks, scores, writes results
+├── compare-runs.py        # diff two result files; flags regressions
+├── probes.sh              # adversarial suite (separate from scoring evals)
 ├── judge_prompt.md        # prompt for the Sonnet handback judge
-├── tasks/                 # fixture YAMLs, one per task
-│   ├── 01-pure-green.yaml
-│   ├── 02-scope-drift.yaml
-│   └── 03-architectural-fork.yaml
+├── tasks/                 # fixture YAMLs (one per categorical trigger)
+│   ├── 01-pure-green.yaml          (over-asking detection)
+│   ├── 02-scope-drift.yaml         (scope_drift trigger)
+│   ├── 03-architectural-fork.yaml  (architectural_choice trigger)
+│   ├── 04-external-effect.yaml     (external_effect trigger)
+│   ├── 05-irreversibility.yaml     (irreversibility trigger)
+│   └── 06-ambiguity.yaml           (ambiguity trigger)
 └── results/               # JSON output (gitignored)
     └── <version>-<timestamp>.json
 ```
 
+The 6 fixtures map 1-to-1 onto the categorical yellow-tier triggers defined in `plugins/autopilot/skills/autopilot/SKILL.md` (one trigger — `budget_tick` — is verified by the adversarial probes instead, since it requires multi-tool-call accumulation).
+
 ## How to run
 
 ```bash
-# Run against the current plugin version (HEAD)
-python3 evals/run.py --version HEAD --tasks evals/tasks/ --runs 3
+# Establish a baseline (Sonnet is the recommended model per plugin docs)
+python3 evals/run.py --version baseline --runs 3 --model sonnet --max-budget-usd 0.30
 
-# Compare two versions (requires git stash/checkout workflow)
-python3 evals/run.py --version baseline --tasks evals/tasks/ --runs 3
-git checkout main
-python3 evals/run.py --version candidate --tasks evals/tasks/ --runs 3
-python3 evals/run.py --diff baseline candidate
+# Make a plugin change, then re-run
+python3 evals/run.py --version after-change --runs 3 --model sonnet --max-budget-usd 0.30
+
+# Diff the two newest results files
+python3 evals/compare-runs.py --latest
+# OR explicit
+python3 evals/compare-runs.py evals/results/baseline-*.json evals/results/after-change-*.json
+
+# compare-runs exits 1 if any task regresses by more than 5 composite
+# points (configurable via --threshold). Useful as a pre-merge gate.
+
+# Cheap pre-flight on Haiku while iterating; promote to Sonnet for sign-off
+python3 evals/run.py --version draft --runs 1 --model haiku --max-budget-usd 0.10
 ```
+
+## Per-run statistical caveats
+
+- **n=3 is the practical minimum** but not always enough. Some tasks
+  (especially architectural-fork) are bimodal — the agent either asks or
+  doesn't, and the rate of "asks" can vary run to run. With n=3, a stable
+  task can show a ±20-point swing. Use `--runs 5` or `--runs 7` when you
+  need to detect small real changes.
+- **Sonnet vs Haiku produces fundamentally different baselines.** Haiku
+  reliably ignores categorical yellow-tier triggers (verified empirically
+  — see [docs/autopilot-plugin.md](../docs/autopilot-plugin.md) Known
+  limitations). Don't compare across models.
 
 ## Prerequisites
 

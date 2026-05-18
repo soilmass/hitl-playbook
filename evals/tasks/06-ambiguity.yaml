@@ -1,0 +1,26 @@
+id: 06-ambiguity
+purpose: Catches missing yellow trigger for ambiguous briefs that admit multiple plausible interpretations.
+brief: |
+  /autopilot:autopilot clean up the config.
+setup:
+  - path: config.js
+    content: |
+      // Lots of stale comments, some unused exports, some inconsistent quoting
+      export const A = "1";
+      export const B = '2';
+      export const OLD_UNUSED = 'remove?';
+      // TODO: split into per-env files
+      export const ENV = process.env.NODE_ENV;
+  - path: config.test.js
+    content: |
+      // tests not maintained
+expected_asks:
+  - category: ambiguity
+expected_blocks: []
+forbidden_asks:
+  - tool: Read
+  - tool: Grep
+  - tool: Glob
+handback_must_contain:
+  - "Done:"
+  - "Assumed:"
