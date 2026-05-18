@@ -8,10 +8,7 @@
   },
   "license": "MIT",
   "homepage": "https://github.com/soilmass/hitl-playbook/tree/main/plugins/autopilot",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/soilmass/hitl-playbook.git"
-  },
+  "repository": "https://github.com/soilmass/hitl-playbook",
   "keywords": ["autopilot", "hitl", "human-in-the-loop", "agent-governance", "claude-code"],
   "engines": {
     "claude-code": ">=2.0.0"

@@ -137,29 +137,39 @@ function checkWrite(input) {
 
 // --- budget tracking -------------------------------------------------------
 
-function budgetPath() {
+// Session id resolution: prefer the hook's stdin payload (set on every
+// hook event by Claude Code), then the real env var name
+// CLAUDE_CODE_SESSION_ID (NOT CLAUDE_SESSION_ID — that was a guess that
+// turned out wrong), then a stable fallback.
+function sessionIdFrom(input) {
+  return input?.session_id
+    || process.env.CLAUDE_CODE_SESSION_ID
+    || process.env.CLAUDE_SESSION_ID
+    || 'unknown-session';
+}
+
+function budgetPath(sessionId) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  const sessionId = process.env.CLAUDE_SESSION_ID || 'unknown-session';
   return join(projectDir, '.claude', 'autopilot-logs', `${sessionId}.budget`);
 }
 
-function readBudget() {
-  try { return Number(readFileSync(budgetPath(), 'utf8')) || 0; }
+function readBudget(sessionId) {
+  try { return Number(readFileSync(budgetPath(sessionId), 'utf8')) || 0; }
   catch { return 0; }
 }
 
-function bumpBudget() {
+function bumpBudget(sessionId) {
   try {
-    const p = budgetPath();
+    const p = budgetPath(sessionId);
     mkdirSync(dirname(p), { recursive: true });
-    const next = readBudget() + 1;
+    const next = readBudget(sessionId) + 1;
     writeFileSync(p, String(next));
     return next;
   } catch { return 0; }
 }
 
-function checkBudget() {
-  const n = readBudget();
+function checkBudget(input) {
+  const n = readBudget(sessionIdFrom(input));
   if (n >= BUDGET_RED) {
     block(`budget exceeded (${n} tool calls; red threshold ${BUDGET_RED}). Hand back to human; do not continue.`);
   }
@@ -204,7 +214,7 @@ function summarizeInput(toolName, input) {
 
 function logToolUse(input) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  const sessionId = process.env.CLAUDE_SESSION_ID || 'unknown-session';
+  const sessionId = sessionIdFrom(input);
   const logDir = join(projectDir, '.claude', 'autopilot-logs');
   const logPath = join(logDir, `${sessionId}.jsonl`);
   try {
@@ -215,7 +225,7 @@ function logToolUse(input) {
       tool: toolName,
       input: redact(summarizeInput(toolName, input.tool_input)),
       ok: input.tool_response?.is_error ? false : true,
-      n: bumpBudget(), // running tool-call count for the session
+      n: bumpBudget(sessionId),
     };
     appendFileSync(logPath, JSON.stringify(entry) + '\n');
   } catch {
@@ -241,11 +251,14 @@ function sessionStart() {
 
 // --- dispatch -------------------------------------------------------------
 
+// Parse stdin once per invocation; pass to handlers that need it.
+const stdinInput = (mode === 'session-start') ? {} : readStdin();
+
 switch (mode) {
-  case 'pretool-bash':    checkBudget(); checkBash(readStdin()); break;
-  case 'pretool-write':   checkBudget(); checkWrite(readStdin()); break;
-  case 'pretool-budget':  checkBudget(); break;
-  case 'posttool-log':    logToolUse(readStdin()); break;
+  case 'pretool-bash':    checkBudget(stdinInput); checkBash(stdinInput); break;
+  case 'pretool-write':   checkBudget(stdinInput); checkWrite(stdinInput); break;
+  case 'pretool-budget':  checkBudget(stdinInput); break;
+  case 'posttool-log':    logToolUse(stdinInput); break;
   case 'session-start':   sessionStart(); break;
   default:
     process.stderr.write(`autopilot guard: unknown mode '${mode}'\n`);
