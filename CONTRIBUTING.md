@@ -78,6 +78,18 @@ Eval runs cost real Anthropic dollars (~$0.05–$0.30 per task on Sonnet, depend
 
 A 3-pass canonical baseline against all current fixtures runs ~$3.50 and takes ~20 minutes in background.
 
+## Criteria-self-bias (known weakness)
+
+The author of the agent's instructions (skills, hooks, commands) and the author of the eval's match patterns (substrings, judge rubrics) should NOT be the same person. When they are, the criteria favor the wording the agent's instructions happen to use, and the eval becomes a circular self-confirmation. The session that produced this codebase had exactly that problem.
+
+Mitigation when extending the eval:
+
+- **Before adding a substring to an `ask_present` criterion, ask an LLM that hasn't seen the skill text** what substrings would catch a thoughtful question on the same brief. Diff against your list. Add the ones you missed.
+- **Each new substring should be defensible by an independent reviewer** — imagine a critic saying "you only added that word because the agent says it." If you can't rebut, don't add it.
+- **For subjective rubrics**, get ≥20 human labels from someone who didn't write the rubric, then run `evals/judge/calibrate.py`. AC2 < 0.7 means the rubric is wrong, not the agent.
+
+The 2026-05-19 audit ([`evals/judge/README.md`](./evals/judge/README.md) workflow) recovered measurable recall via independent perspective on fixture 04 (mean rose 67 → 100 after the auditor's substrings landed). Same approach applies to every new criterion.
+
 ## Don't
 
 - Strengthen skill text for Class B triggers expecting improvement — past evidence shows it doesn't move scores beyond ~57. Add to documentation instead.

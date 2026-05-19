@@ -4,7 +4,10 @@ Date: 2026-05-18
 
 ## Status
 
-Accepted
+**Superseded in part by [ADR-0017](./0017-rigorous-criteria-methodology.md) (2026-05-19).**
+ADR-0017's per-criterion bootstrap CI gating replaces this ADR's 5-point composite merge gate. The 4-metric composite formula and the single global Sonnet judge described below were removed from `evals/run.py` in PR-8 of the methodology shift. The `judge_prompt.md` file referenced below was deleted and replaced by per-rubric files under `evals/judge/rubrics/`. This ADR remains as historical record of the v0.1 design rationale.
+
+Originally: Accepted (2026-05-18).
 
 ## Context
 

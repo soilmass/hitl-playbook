@@ -208,11 +208,13 @@ def _parse_stream_json(stream: str, work_dir: Path) -> dict:
                         for q in blk.get("input", {}).get("questions", []):
                             ask_questions.append({
                                 "question_text": q.get("question", ""),
-                                "category": _classify_ask(q.get("question", "")),
                                 "options": q.get("options", []),
                                 # Position in tool_calls — temporal ordering signal
                                 # for the v2 ask_present criterion (PR-3 / ADR-0017).
                                 "tool_calls_index": idx,
+                                # Note: the v1 'category' field was deleted in PR-8
+                                # along with _classify_ask. The v2 ask_present criterion
+                                # matches on question_text substrings directly.
                             })
                     elif blk.get("name") == "Agent":
                         st = blk.get("input", {}).get("subagent_type", "")

@@ -149,7 +149,7 @@ See [`adr/`](./adr/). Numbered in order. Append-only per [`../standards/11-adrs.
 | [0008](./adr/0008-context-management-strategy.md) | Context management strategy for autopilot |
 | [0009](./adr/0009-audit-trail-mechanism.md) | Audit trail mechanism (hook + decision log) |
 | [0010](./adr/0010-task-type-specific-commands.md) | Task-type-specific autopilot commands |
-| [0011](./adr/0011-eval-harness-design.md) | Eval harness for measuring plugin changes |
+| [0011](./adr/0011-eval-harness-design.md) | Eval harness for measuring plugin changes (composite scoring — superseded in part by ADR-0017) |
 | [0012](./adr/0012-cost-budget-via-tool-call-counter.md) | Cost/budget governance via tool-call counter |
 | [0013](./adr/0013-cross-platform-node-helper.md) | Cross-platform Node helper for hooks |
 | [0014](./adr/0014-askuserquestion-print-mode-limitation.md) | AskUserQuestion is non-functional in `--print` mode (accepted limitation) |

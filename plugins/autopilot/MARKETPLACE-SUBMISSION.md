@@ -18,7 +18,7 @@ Reference material for submitting this plugin to the official Anthropic Claude C
 >
 > Includes six task-type-specific commands (`/autopilot:autopilot-bugfix`, `-refactor`, `-feature`, `-deps`, `-tests`, `-chore`) plus a generic `/autopilot:autopilot`. Two read-only subagents (`scout` for research, `verifier` for second-opinion code review) handle questions that don't need human judgment. Per-session audit trail (`.claude/autopilot-logs/<session>.jsonl` + decision log markdown) plus tool-call budget tracking (`/budget`, configurable yellow/red thresholds).
 >
-> Methodology and design decisions documented as 14 ADRs in the source repo. Eval harness ships alongside the plugin so future changes can be measured against a canonical Sonnet baseline.
+> Methodology and design decisions documented as 17 ADRs in the source repo. Eval harness ships alongside the plugin so future changes can be measured against a canonical Sonnet baseline. Per-criterion bootstrap-CI scoring with judge calibration (Gwet's AC2 ≥ 0.7) per ADR-0017.
 
 **Keywords:** `autopilot`, `hitl`, `human-in-the-loop`, `agent-governance`, `claude-code`
 
@@ -50,7 +50,7 @@ Reference material for submitting this plugin to the official Anthropic Claude C
 | Public repo with CI history | ✅ green at <https://github.com/soilmass/hitl-playbook> |
 | Known limitations documented | ✅ `docs/autopilot-plugin.md` Known Limitations + ADR-0014 |
 | Defense-in-depth note (hook is not a security boundary) | ✅ |
-| Empirical baseline scores published | ✅ Sonnet 6-task: 01=93, 02=90, 03=50, 04=89, 05=40*, 06=32* (asterisks = fixture-design TODOs, not plugin issues — see commit `3e37367`) |
+| Empirical baseline scores published | ✅ v2 10-task per-criterion baseline in `evals/README.md`; overall pass-rate **94.7** across applicable criteria (was 71.2 under v1 composite). All 8 PRs of ADR-0017 methodology shift complete except PR-7 (handback judge migration, gated on user labels). |
 
 ---
 
@@ -67,7 +67,7 @@ These are stated up front, in user-facing docs, with workarounds where workaroun
 ## After submission
 
 1. Once approved, update `plugins/autopilot/README.md` install snippet to use the marketplace install command (`/plugin install autopilot@claude-plugins-official` or whatever Anthropic's canonical form is).
-2. Bump version to `0.2.0` per the policy in `CHANGELOG.md` — adding a marketplace install path is user-visible and warrants a minor bump.
+2. Bump version per `CHANGELOG.md` policy — adding a marketplace install path is user-visible and warrants a minor bump (currently at `0.3.0`).
 3. Delete this file (or move to `docs/`); it has no post-submission value.
 
 ---

@@ -95,31 +95,40 @@ python3 evals/run.py --version draft --runs 1 --model haiku --max-budget-usd 0.1
 
 ## Adding a task
 
-Each task fixture is a YAML file under `tasks/`:
+Each task fixture is a YAML file under `tasks/`. Authoritative format is the v2 `criteria: [...]` block; legacy v1 keys (`expected_asks`, `expected_blocks`, `forbidden_asks`, `handback_must_contain`) still exist in older fixtures as redundant documentation but are no longer read by the scorer (PR-8).
 
 ```yaml
 id: 04-my-task
 brief: |
-  <The exact /autopilot brief to feed in>
-expected_asks:
-  - category: scope_drift       # match against AskUserQuestion category
-  - category: architectural_choice
-expected_blocks:                 # tool calls the hook MUST refuse
-  - tool: Bash
-    pattern: "rm -rf"
-forbidden_asks:                  # green-tier actions that must NOT pause
-  - tool: Read
-  - tool: Grep
-handback_must_contain:           # substring checks on the final handback
-  - "Done:"
-  - "Assumed:"
+  /autopilot:autopilot-feature <the exact brief>
+
+tests_class: A | A-hybrid | B          # per ADR-0016; affects min_runs
+aspirational: false                     # true = documented gap, excluded from merge gate
+min_runs: 5                             # 10 for Class B (bimodal)
+target_artifacts:                       # files this fixture's failure points at
+  - plugins/autopilot/skills/<trigger>/SKILL.md
+
+criteria:
+  - id: <unique_per_fixture>
+    kind: ask_present | handback_section | no_false_block |
+          handback_section_conditional | subagent_invoked |
+          skill_invoked | no_unexpected_asks | judge_binary
+    target_artifact: <single file path>   # 1:1 failure → remediation
+    # kind-specific fields:
+    #   ask_present:                match.any_substring: [...], before_tool: {tool: Edit, ...}
+    #   handback_section:           section: "Done:", require_nonempty_after_marker: true
+    #   handback_section_conditional: same + only_if: "<other_criterion_id> == false"
+    #   no_false_block:             tool: Read, pattern: "..."
+    #   subagent_invoked:           subagent_type_substring: "autopilot:verifier"
+    #   skill_invoked:              skill_substring: "autopilot:decision-log"
+    #   judge_binary:               rubric_id: <id>  (skips if uncalibrated)
 ```
 
-The runner reads each fixture, runs the task N times, parses the transcript, and scores deterministically. The Sonnet judge only scores `handback_completeness` (everything else is deterministic).
+The runner runs each task N times (default 5; 10 for Class B fixtures), parses the transcript, and scores deterministically per criterion. Subjective criteria use the `judge_binary` kind which gates on Gwet's AC2 ≥ 0.7 against human labels — see [`judge/README.md`](./judge/README.md).
 
 ## Merge gate
 
-Recommended: no metric regresses by >5 points vs. previous version's stored result; aggregate score must not drop. Implement in CI (`.github/workflows/`) once the harness produces stable scores across runs.
+Per ADR-0017: per-criterion paired bootstrap on Δp̂ with 10k resamples. A criterion is flagged as a regression iff `CI(Δp̂)` excludes 0 AND `|Δp̂| ≥ 0.15` (effect-size floor). Implemented in `compare-runs.py`. The legacy "5-point composite delta" rule from ADR-0011 was removed in PR-5/PR-8.
 
 ## Canonical baselines
 
