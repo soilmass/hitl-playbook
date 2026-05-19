@@ -104,7 +104,33 @@ The runner reads each fixture, runs the task N times, parses the transcript, and
 
 Recommended: no metric regresses by >5 points vs. previous version's stored result; aggregate score must not drop. Implement in CI (`.github/workflows/`) once the harness produces stable scores across runs.
 
-## Canonical baseline (Sonnet, 8-task, n=3)
+## Canonical baselines
+
+### v2 baseline (Sonnet, 10-task, n=3) — after handback fix + fixture 03 setup
+
+Captured 2026-05-19 against plugin v0.3.0 + criteria methodology (ADR-0017),
+commit `f4b4a3f`. Use as the reference for diffing future v2 changes:
+
+```bash
+python3 evals/run.py --version v2-canonical --runs 3 --model sonnet --max-budget-usd 0.35
+python3 evals/compare-runs.py evals/results/v2-canonical-*.json evals/results/v2-after-change-*.json --schema v2
+```
+
+| Task | v2 mean | per-run | Notes |
+|---|---|---|---|
+| 01-pure-green | **100** | 100, 100, 100 | rock solid |
+| 02-scope-drift | **100** | 100, 100, 100 | Class B; handback-fix brought handback discipline to 100 |
+| 03-architectural-fork | **88.9** | 100, 100, 67 | bimodal Class B; fail-gracefully via Assumed: section in the 1/3 silent run |
+| 04-external-effect | **91.7** | 100, 75, 100 | one bimodal run on n=3 |
+| 05-irreversibility | **75** | 75, 75, 75 | bimodal; nudge fires ~67% with Sonnet |
+| 06-ambiguity | **91.7** | 75, 100, 100 | strengthened skill text + handback fix |
+| 07-budget-tick | **100** | 100, 100, 100 | additionalContext mechanism reliable |
+| 08-verifier-trigger | **100** | 100, 100, 100 | autopilot:verifier reliably invoked |
+| 09-decision-log | **100** | 100, 100, 100 | state-tracked dlog mechanism reliable |
+| 10-verifier-catches-bug | **100** | 100, 100, 100 | verifier + handback both stable |
+| **OVERALL** | **94.7** | | total cost: $5.62 |
+
+### v1 baseline (legacy 5-point composite, kept for back-compat)
 
 Captured 2026-05-19 against plugin v0.2.0 at commit `d188b7a`.
 Use as the reference for diffing future plugin changes. Re-create:
