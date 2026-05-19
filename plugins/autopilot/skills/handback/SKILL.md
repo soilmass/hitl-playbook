@@ -1,11 +1,13 @@
 ---
 name: handback
-description: End-of-task report format for autopilot mode. Invoke when the briefed task is complete or you are truly blocked.
+description: End-of-task report format for autopilot mode. Invoke at the END of every autopilot task — done, blocked, ambiguous, or interrupted. Mandatory per autopilot/SKILL.md "Handback every time" rule. The output MUST start with a literal `**Done:**` or `**Blocked:**` line; downstream eval / audit / reviewer tooling parses these section markers verbatim.
 ---
 
 # Handback report
 
-When autopilot mode completes a task (or is fully blocked), produce a handback in this shape. The human is reading this to decide whether to merge, retry, or redirect — make that decision fast.
+When autopilot mode completes a task (or is fully blocked, or was interrupted by an unresolved AskUserQuestion), produce a handback in this shape. The human is reading this to decide whether to merge, retry, or redirect — make that decision fast.
+
+**The first non-prose line of your final response MUST be either `**Done:**` or `**Blocked:**`** — verbatim. The literal `Done:` / `Blocked:` marker is parsed by the eval scorer (`evals/scorer/criteria.py:_h_handback_section`) and by humans skimming the diff. A handback without this marker is, downstream, the same as no handback at all. Do not paraphrase ("Task complete", "Wrapping up", "Handback:"); these break the parser. Begin the report with the marker.
 
 ## Format (when done)
 
