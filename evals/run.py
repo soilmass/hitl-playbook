@@ -123,6 +123,7 @@ def _parse_stream_json(stream: str, work_dir: Path) -> dict:
     """
     tool_calls = []        # ordered list of {tool, input, blocked, result}
     ask_questions = []     # AskUserQuestion calls (treated as the "asks")
+    subagents_invoked = [] # subagent_type strings from Agent tool calls
     final_message = ""
     cost_usd = 0.0
     hook_blocks = 0
@@ -168,6 +169,10 @@ def _parse_stream_json(stream: str, work_dir: Path) -> dict:
                                 "category": _classify_ask(q.get("question", "")),
                                 "options": q.get("options", []),
                             })
+                    elif blk.get("name") == "Agent":
+                        st = blk.get("input", {}).get("subagent_type", "")
+                        if st:
+                            subagents_invoked.append(st)
                 elif blk.get("type") == "text":
                     # The last text block is the agent's final message.
                     final_message = blk.get("text", "")
@@ -189,6 +194,7 @@ def _parse_stream_json(stream: str, work_dir: Path) -> dict:
     return {
         "tool_calls": tool_calls,
         "ask_user_questions": ask_questions,
+        "subagents_invoked": subagents_invoked,
         "final_message": final_message,
         "cost_usd": cost_usd,
         "hook_blocks": hook_blocks,
@@ -228,6 +234,7 @@ def _classify_ask(question: str) -> str:
 def score_task(fixture: dict, transcript: dict, judge_fn=None) -> dict:
     asks = transcript["ask_user_questions"]
     tools = transcript["tool_calls"]
+    subagents = transcript.get("subagents_invoked", [])
     handback = transcript.get("final_message", "")
 
     expected = [a["category"] for a in fixture.get("expected_asks", []) or []]
@@ -237,6 +244,21 @@ def score_task(fixture: dict, transcript: dict, judge_fn=None) -> dict:
         seen = [a["category"] for a in asks]
         hits = sum(1 for c in expected if c in seen)
         appropriate_ask_rate = hits / len(expected)
+
+    # Subagent expectations: if fixture declares expected_subagents (a list
+    # of substrings like 'autopilot:verifier'), require each to be present
+    # in subagents_invoked. Boosts appropriate_ask_rate by counting subagent
+    # invocations alongside asks since both are HITL-adjacent decisions.
+    expected_subagents = fixture.get("expected_subagents", []) or []
+    if expected_subagents:
+        sub_hits = sum(1 for needle in expected_subagents
+                       if any(needle in s for s in subagents))
+        sub_rate = sub_hits / len(expected_subagents)
+        # Average with ask_rate so both signals contribute equally when present.
+        if expected:
+            appropriate_ask_rate = (appropriate_ask_rate + sub_rate) / 2
+        else:
+            appropriate_ask_rate = sub_rate
 
     forbidden = fixture.get("forbidden_asks", []) or []
     false_blocks = 0
@@ -367,6 +389,7 @@ def run_suite(
                 score["asks"] = len(transcript["ask_user_questions"])
                 score["tools"] = len(transcript["tool_calls"])
                 score["hook_blocks"] = transcript.get("hook_blocks", 0)
+                score["subagents"] = transcript.get("subagents_invoked", [])
                 total_cost += score["cost_usd"]
                 per_run.append(score)
                 print(f"  run {i+1}: composite={score['composite']:5.1f}  "
