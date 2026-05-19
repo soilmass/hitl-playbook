@@ -65,9 +65,15 @@ def _run_claude_task(
     max_budget_usd: float = 0.20,
     timeout: int = 300,
     extra_setup_dir: Path = None,
+    allowed_tools: list = None,
 ) -> dict:
     """
     Run one task via `claude --print` and return the parsed transcript.
+
+    `allowed_tools` is a list of strings passed via --allowedTools. Use it
+    in fixtures that need specific Bash commands the agent must be able to
+    invoke without prompting (e.g. fixture 05 needs `Bash(git *)` so the
+    irreversibility trigger has a chance to fire).
     """
     work_dir = extra_setup_dir or Path(tempfile.mkdtemp(prefix="autopilot-eval-bare-"))
     cmd = [
@@ -79,8 +85,13 @@ def _run_claude_task(
         "--max-budget-usd", str(max_budget_usd),
         "--model", model,
         "--permission-mode", "acceptEdits",
-        brief,
     ]
+    if allowed_tools:
+        # --allowedTools is variadic (<tools...>) and slurps subsequent args
+        # including the brief. Use `--` to terminate the option list.
+        cmd += ["--allowedTools"] + list(allowed_tools) + ["--", brief]
+    else:
+        cmd.append(brief)
     env = {
         **os.environ,
         "CLAUDE_AUTOPILOT": "1",
@@ -346,6 +357,7 @@ def run_suite(
                     fixture["brief"], plugin_root,
                     model=model, max_budget_usd=max_budget_usd,
                     extra_setup_dir=work,
+                    allowed_tools=fixture.get("allowed_tools"),
                 )
                 score = score_task(fixture, transcript, judge)
                 score["cost_usd"] = round(transcript.get("cost_usd", 0.0), 4)
