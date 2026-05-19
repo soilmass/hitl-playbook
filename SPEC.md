@@ -39,6 +39,7 @@ A project adopts the playbook by copying the relevant standards, filling in the 
 | 10 | [Security](./standards/10-security.md) | Operations | OWASP Top 10 + supply chain + disclosure path |
 | 11 | [Decision records](./standards/11-adrs.md) | Operations | "Why" is captured before memory fades |
 | 12 | [AI agent collaboration](./standards/12-agents.md) | Operations | Agents brief from facts, not hallucination |
+| 13 | [HITL agent supervision](./standards/13-hitl.md) | Operations | In-task supervision loop with eval discipline for autonomous-agent work |
 
 ---
 
@@ -52,9 +53,9 @@ These four define the daily-work loop: get set up → branch → write code → 
 
 These four define what "done" means for a code change. Code that compiles isn't necessarily done — it has to meet style, performance, accessibility, and be diagnosable when it breaks. These standards are gates the Foundation procedures hand work into.
 
-### Operations (9–12): ongoing health
+### Operations (9–13): ongoing health
 
-These four define how the project stays healthy after the work ships. Dependencies decay, security threats evolve, decisions need re-explaining, and AI collaborators arrive. Without operations procedures, a project that shipped well still rots quietly.
+These five define how the project stays healthy after the work ships. Dependencies decay, security threats evolve, decisions need re-explaining, AI collaborators arrive, and autonomous agents need in-task supervision. Without operations procedures, a project that shipped well still rots quietly.
 
 ---
 

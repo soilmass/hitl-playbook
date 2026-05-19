@@ -6,7 +6,7 @@ A portable set of procedural standards for web-development projects of any frame
 
 ## What this is
 
-12 standards covering every developer-side concern that's universal to web projects — setup, git, review, testing, style, debugging, performance, accessibility, dependencies, security, decision records, AI agent collaboration. Each standard:
+13 standards covering every developer-side concern that's universal to web projects — setup, git, review, testing, style, debugging, performance, accessibility, dependencies, security, decision records, AI agent collaboration, and HITL agent supervision. Each standard:
 
 - **Anchored to an industry source.** WCAG, OWASP, Conventional Commits, Google SRE, etc. The standard restates the relevant parts and tells you where to verify and go deeper.
 - **Framework-agnostic.** Works for React, Vue, Astro, Next.js, plain HTML/CSS, and most non-web stacks with minor adaptation.
@@ -51,7 +51,7 @@ Find which standards you already practice implicitly, write them down (lift onto
 
 ---
 
-## The 12 standards
+## The 13 standards
 
 Grouped by tier. See [`SPEC.md`](./SPEC.md) for the full framework + how they relate.
 
@@ -81,6 +81,7 @@ Grouped by tier. See [`SPEC.md`](./SPEC.md) for the full framework + how they re
 | 10 | [Security](./standards/10-security.md) | OWASP Top 10; secrets; disclosure; CVE response |
 | 11 | [Decision records (ADRs)](./standards/11-adrs.md) | Capture the "why" so it isn't re-litigated |
 | 12 | [AI agent collaboration](./standards/12-agents.md) | Brief; verify; common failure modes from agent PRs |
+| 13 | [HITL agent supervision](./standards/13-hitl.md) | In-task supervision loop: three-tier action model, categorical triggers, eval discipline |
 
 ---
 
