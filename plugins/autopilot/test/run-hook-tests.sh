@@ -161,6 +161,50 @@ assert_write BLOCK "/tmp/../etc/passwd"
 popd >/dev/null
 rm -rf "$TMPCWD"
 
+# ===== Redaction regression (from dogfood-bugfix audit, 2026-05-19) =====
+# Path segments that happen to be 32+ chars of [A-Za-z0-9_-] must NOT
+# be treated as opaque tokens. Verifies the (?<!\/)...(?!\/) lookbehind
+# in SECRET_PATTERNS.
+assert_redact() {
+  local expect="$1" inp="$2"
+  # Build a fake PostToolUse payload, feed to posttool-log, scrape the
+  # resulting input field from the JSONL.
+  local tmp=$(mktemp -d -t autopilot-redact-XXXXXX)
+  local sid="redact-test-$$"
+  local payload
+  payload=$(printf '{"tool_name":"Read","tool_input":{"file_path":%s},"session_id":"%s"}' \
+    "$(printf '%s' "$inp" | json_escape)" "$sid")
+  echo "$payload" | CLAUDE_PROJECT_DIR="$tmp" CLAUDE_CODE_SESSION_ID="$sid" \
+    node "$GUARD" posttool-log >/dev/null 2>&1
+  local logged
+  logged=$(node -e "const l=require('fs').readFileSync('$tmp/.claude/autopilot-logs/$sid.jsonl','utf8').trim().split('\n').pop(); console.log(JSON.parse(l).input);" 2>/dev/null || echo "")
+  local got
+  if echo "$logged" | grep -q '\*\*\*'; then got=REDACT; else got=KEEP; fi
+  if [ "$got" = "$expect" ]; then
+    PASS=$((PASS + 1))
+  else
+    FAIL=$((FAIL + 1))
+    FAILED_CASES+=("  redact want=$expect got=$got input='$inp' logged='$logged'")
+  fi
+  rm -rf "$tmp"
+}
+
+# Path segments — should NOT be redacted even if 32+ chars.
+# Original bug: tempdir names like 'autopilot-eval-07-budget-tick-1d3jcl6o'
+# (40 chars, all [A-Za-z0-9_-]) were being redacted as opaque tokens.
+assert_redact KEEP   "/tmp/autopilot-eval-07-budget-tick-1d3jcl6o/src/db/users.ts"
+# Real opaque secrets — MUST be redacted
+assert_redact REDACT "sk-ant-api03-9aBcDeFgHiJkLmNoPqRsTuVwXyZ012345"
+# Plain short paths — neither
+assert_redact KEEP   "/tmp/foo.txt"
+# Known limitation NOT asserted: paths with very long hyphen-rich
+# segments (e.g. /home/user/some-long-project-name-with-hyphens-aaaa/...)
+# can still have an inner substring redacted because \b matches at every
+# hyphen. Perfect path-vs-token discrimination is beyond what this regex
+# can do; the FIRST SECRET_PATTERN (api_key=, bearer=, etc.) is the real
+# defense for labeled secrets, and the audit log isn't a security
+# boundary regardless (ADR-0006).
+
 # ===== Summary =====
 TOTAL=$((PASS + FAIL))
 echo

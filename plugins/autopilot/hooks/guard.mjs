@@ -202,7 +202,13 @@ function checkBudget(input) {
 
 const SECRET_PATTERNS = [
   /(api[_-]?key|token|secret|password|bearer|authorization)[=:\s]+["']?([^"'\s,;)]+)/gi,
-  /\b[A-Za-z0-9_-]{32,}\b/g, // long opaque tokens
+  // Long opaque tokens (api keys, random ids, etc.) — but NOT path segments.
+  // Negative lookbehind/lookahead for `/` excludes tokens that are components
+  // of a filesystem path (e.g. /tmp/autopilot-eval-07-budget-tick-1d3jcl6o/src).
+  // Known edge case: a secret embedded directly in a URL path will NOT be
+  // redacted; the first pattern (api_key=..., bearer=..., etc.) is the
+  // primary defense for those, since secrets-in-URL-paths is rare in practice.
+  /(?<!\/)\b[A-Za-z0-9_-]{32,}\b(?!\/)/g,
 ];
 
 function redact(s) {
