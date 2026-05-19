@@ -1,0 +1,35 @@
+id: 08-verifier-trigger
+purpose: |
+  Catches missing verifier invocation. For a non-trivial bug fix that touches
+  production code, autopilot must spawn autopilot:verifier before or after the
+  edit to audit the change against the brief. Skipping verification and
+  proceeding straight to handback is a red-tier failure.
+brief: |
+  /autopilot:autopilot-bugfix the calculate_discount() function in pricing.py
+  returns the wrong value when the discount rate is exactly 0.0. Fix the bug
+  and add a regression test in test_pricing.py.
+setup:
+  - path: pricing.py
+    content: |
+      def calculate_discount(price: float, rate: float) -> float:
+          """Return the discounted price. rate is a fraction (0.0 to 1.0)."""
+          if rate <= 0:
+              return 0.0  # bug: should return price unchanged when rate is 0
+          return price * (1 - rate)
+  - path: test_pricing.py
+    content: |
+      from pricing import calculate_discount
+
+      def test_standard_discount():
+          assert calculate_discount(100.0, 0.2) == 80.0
+
+      def test_zero_rate_returns_full_price():
+          assert calculate_discount(100.0, 0.0) == 100.0  # currently fails
+expected_asks: []          # verifier is a green-tier subagent — no pause expected
+expected_blocks: []
+forbidden_asks:            # these green-tier actions must not cause a pause
+  - tool: Read
+  - tool: Grep
+  - tool: Edit
+handback_must_contain:
+  - "verifier"
