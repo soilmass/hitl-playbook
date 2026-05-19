@@ -2,6 +2,33 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/) — see "Versioning policy" below.
 
+## [Unreleased]
+
+### Changed — Eval methodology (no plugin behavior change)
+
+- **Eval harness rewritten** per [ADR-0017](../../docs/adr/0017-rigorous-criteria-methodology.md):
+  scoring is now per-criterion binary checks with paired-bootstrap-CI
+  merge gating (Wilson 95% CI on pass-rate, 10k-resample bootstrap on
+  Δp̂, |Δ| ≥ 0.15 effect-size floor). The legacy 5-point composite
+  rule from ADR-0011 is removed. Each criterion declares a single
+  `target_artifact` so failures map 1:1 to a file to open. No change
+  to plugin code; this is purely a measurement upgrade.
+- **v2 canonical baseline** (Sonnet, 10-task, n=3): **94.7** overall
+  pass-rate across applicable criteria. See `evals/README.md`.
+- **Judge calibration** infrastructure added under `evals/judge/`:
+  binary rubrics gated on Gwet's AC2 ≥ 0.7 against human labels.
+  No rubric currently calibrated; `judge_binary` criteria fall back
+  to `skipped`. PR-7 (handback quality migration) blocked on labels.
+
+### Fixed — Eval harness
+
+- **`evals/run.py`**: removed call to `_classify_ask` (deleted in
+  PR-8 of the methodology shift) from `_parse_stream_json`. Without
+  this fix, every fixture that fired `AskUserQuestion` would crash
+  with `NameError`, silently swallowed by the broad `except Exception`
+  as `error:`. Caught by independent audit; the published v2
+  canonical numbers were captured before PR-8 and remain valid.
+
 ## [0.3.0] - 2026-05-19
 
 ### Added — Behavior
