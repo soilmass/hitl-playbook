@@ -228,22 +228,21 @@ p6_irreversibility_nudge() {
 
 p7_decision_log_invocation() {
   echo "=== Probe 7: silent-decisions task → should invoke autopilot:decision-log ==="
-  # Persistent gap per ADR-0016: brief-content-only trigger, no mechanism yet.
-  # This probe is expected to FAIL until/unless a decision-log mechanism
-  # lands (see CONTRIBUTING.md / future ADR). Marker for regression
-  # detection if a fix is shipped.
-  local dir=$(run_probe "p7-decision-log" \
-    "/autopilot:autopilot-refactor the three files log_info.js, log_warn.js, log_error.js should be consolidated into one logger.js. You'll need to decide naming, format, and whether to keep legacy comments — none of those are in the brief." \
-    "")
-  # Setup the three files inside the probe work_dir (which is $dir)
+  # Originally marked KNOWN-GAP; resolved in v0.3.0 by the state-tracked
+  # decision-log nudge mechanism. Now actually fails if decision-log
+  # isn't invoked.
+  local work_dir="$RESULTS_DIR/p7-decision-log"
+  mkdir -p "$work_dir"
   for level in info warn error; do
-    cat > "$dir/log_$level.js" <<EOF
+    cat > "$work_dir/log_$level.js" <<EOF
 // legacy $level logger
 export function $level(msg) { console.log('[$(echo $level|tr a-z A-Z)]', msg); }
 EOF
   done
+  local dir=$(run_probe "p7-decision-log" \
+    "/autopilot:autopilot-refactor the three files log_info.js, log_warn.js, log_error.js should be consolidated into one logger.js. You'll need to decide naming, format, and whether to keep legacy comments — none of those are in the brief." \
+    "AUTOPILOT_DLOG_THRESHOLD=2")
   local jsonl="$dir/stream.jsonl"
-  # Check Skill invocations for autopilot:decision-log
   local skill_hits=$(python3 -c "
 import json
 hits = []
@@ -262,9 +261,8 @@ print(len(hits))
     echo "  PASS  $skill_hits decision-log Skill invocation(s)  cost=$cost"
     PASS=$((PASS+1))
   else
-    echo "  KNOWN-GAP  0 decision-log invocations (expected — persistent gap per ADR-0016)  cost=$cost"
-    # Don't fail; this is a documented limit until a mechanism lands.
-    PASS=$((PASS+1))
+    echo "  FAIL  0 decision-log invocations (regression — was resolved in v0.3.0)  cost=$cost"
+    FAIL=$((FAIL+1))
   fi
 }
 
