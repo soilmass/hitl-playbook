@@ -100,8 +100,11 @@ Beyond the 12 standards, this repo carries a Human-in-the-Loop (HITL) extension 
 
 - **[`docs/hitl-framework.md`](./docs/hitl-framework.md)** — HITL methodology extending standard 12 (AI agent collaboration). Three-tier action classification, checkpoint mechanics, briefing & handback protocol, etc.
 - **[`docs/autopilot-plugin.md`](./docs/autopilot-plugin.md)** — Canonical reference for the autopilot plugin.
-- **[`plugins/autopilot/`](./plugins/autopilot/)** — Installable Claude Code plugin (`/plugin install /path/to/plugins/autopilot`) that runs Claude in autonomous-with-checkpoints mode.
-- **[`docs/adr/`](./docs/adr/)** — Architecture Decision Records for the HITL extension and plugin design.
+- **[`plugins/autopilot/`](./plugins/autopilot/)** — Installable Claude Code plugin (`/plugin install /path/to/plugins/autopilot`) that runs Claude in autonomous-with-checkpoints mode. Currently at v0.3.0 — see [`plugins/autopilot/CHANGELOG.md`](./plugins/autopilot/CHANGELOG.md).
+- **[`evals/`](./evals/)** — Eval harness for measuring plugin changes. Run `python3 evals/run.py --version baseline --runs 3 --model sonnet` before/after any plugin change.
+- **[`docs/adr/`](./docs/adr/)** — 16 Architecture Decision Records for the HITL extension and plugin design (append-only).
+- **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** — eval-driven workflow + trigger classification rules.
+- **[`SECURITY.md`](./SECURITY.md)** — what the plugin protects against and what it explicitly doesn't.
 
 These are optional extensions, not part of the playbook's core contract. Adopting projects can take the 12 standards without them.
 
