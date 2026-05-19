@@ -33,6 +33,14 @@ python3 evals/compare-runs.py --latest
 # Exit code 1 = at least one criterion's Δp̂ CI excludes zero AND
 #                |Δp̂| ≥ 0.15 (effect-size floor). Each flagged
 #                criterion names the single target_artifact to open.
+
+# 5. Required: independent review (catches what self-review misses).
+#    Spawns a fresh Claude over the staged diff with an adversarial
+#    audit prompt. Caught a P0 + two P2s on its own first dogfood run.
+python3 evals/audit.py                  # vs HEAD (uncommitted work)
+python3 evals/audit.py --since main     # vs base branch (committed work)
+# Exit code 1 = auditor returned VERDICT: FAIL — at least one P0/P1.
+#                Cost ~$0.10-0.30 per audit on Sonnet.
 ```
 
 For changes that affect only one trigger, use `--filter <NN>` to re-run just the relevant fixture and save cost (note: `--filter` substring-matches, so `--filter 0` matches all 10 fixtures since every filename contains `0`; use a 2-digit prefix):

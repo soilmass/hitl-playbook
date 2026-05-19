@@ -294,8 +294,9 @@ def run_suite(
     model: str,
     max_budget_usd: float,
     keep_work_dirs: bool,
-    filter_substr: str = None,
+    filter_spec: str = None,
     no_plugin: bool = False,
+    allow_underrun: bool = False,
 ):
     results = {
         "version": version,
@@ -307,14 +308,29 @@ def run_suite(
 
     total_cost = 0.0
     fixture_paths = sorted(tasks_dir.glob("*.yaml"))
-    if filter_substr:
-        fixture_paths = [p for p in fixture_paths if filter_substr in p.name]
-        if not fixture_paths:
-            sys.exit(f"no fixture in {tasks_dir} matched filter '{filter_substr}'")
+    if filter_spec:
+        fixture_paths = _apply_filter(fixture_paths, filter_spec, tasks_dir)
     for fixture_path in fixture_paths:
         fixture = yaml.safe_load(fixture_path.read_text())
         task_id = fixture["id"]
         per_run = []
+        # Enforce per-fixture min_runs (ADR-0017 PR-2). Class B bimodal
+        # fixtures declare min_runs: 10; under-running them produces
+        # results that can't be statistically interpreted.
+        min_runs = int(fixture.get("min_runs", 3))
+        if runs < min_runs:
+            msg = (f"  fixture requires min_runs={min_runs} "
+                   f"(class {fixture.get('tests_class','?')}); "
+                   f"got --runs {runs}.")
+            if allow_underrun:
+                print(f"\n{task_id}: ⚠ UNDERRUN {msg} (--allow-underrun set; proceeding)")
+            else:
+                print(f"\n{task_id}: SKIPPED {msg} (pass --allow-underrun to force)")
+                results["tasks"][task_id] = [{"note": "UNDERRUN_SKIPPED",
+                                              "required_min_runs": min_runs,
+                                              "provided_runs": runs,
+                                              "schema_version": 2}]
+                continue
         print(f"\n{task_id}: {fixture.get('purpose','')[:80]}")
         for i in range(runs):
             work = _setup_workspace(fixture)
@@ -378,16 +394,59 @@ def run_suite(
     print(f"Wrote {out}")
 
 
+def _apply_filter(fixture_paths: list, spec: str, tasks_dir: Path) -> list:
+    """Filter fixtures by --filter spec.
+
+    Avoids the substring footgun where `--filter 0` matches all 10
+    fixtures (every filename contains '0'). Strategy:
+      - Comma-separated tokens; ANY match passes.
+      - If a token is all digits, match fixture id prefix anchored at
+        the leading numeric: `03` matches `03-architectural-fork.yaml`
+        but NOT `10-verifier-catches-bug.yaml`.
+      - Otherwise substring-match against the basename (so word filters
+        like `scope` still work).
+    """
+    tokens = [t.strip() for t in spec.split(",") if t.strip()]
+    matched = []
+    for p in fixture_paths:
+        name = p.name
+        for tok in tokens:
+            if tok.isdigit():
+                # zfill is idempotent for tokens >=2 digits, so it handles
+                # both '3' → '03-' and '03' → '03-' without a duplicate
+                # branch.
+                if name.startswith(f"{tok.zfill(2)}-"):
+                    matched.append(p)
+                    break
+            else:
+                if tok in name:
+                    matched.append(p)
+                    break
+    if not matched:
+        sys.exit(f"no fixture in {tasks_dir} matched filter '{spec}' "
+                 f"(tokens={tokens}). Use 2-digit prefixes (e.g. '03,06') "
+                 f"or word substrings (e.g. 'scope').")
+    return matched
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--version", required=True, help="label for this run (e.g. HEAD, baseline)")
     ap.add_argument("--tasks", default=str(REPO_ROOT / "evals" / "tasks"))
-    ap.add_argument("--runs", type=int, default=1, help="runs per task")
+    ap.add_argument("--runs", type=int, default=3,
+                    help="runs per task (default 3; fixtures with min_runs > runs are skipped "
+                         "unless --allow-underrun)")
     ap.add_argument("--plugin-root", default=str(REPO_ROOT / "plugins" / "autopilot"))
     ap.add_argument("--model", default="haiku", help="claude model (haiku|sonnet|opus)")
     ap.add_argument("--max-budget-usd", type=float, default=0.20, help="per-task cost cap")
     ap.add_argument("--keep-work-dirs", action="store_true", help="don't delete per-task tmpdirs")
-    ap.add_argument("--filter", help="only run fixtures whose filename contains this substring (e.g. '02' or 'scope')")
+    ap.add_argument("--filter",
+                    help="comma-separated fixture id prefixes (e.g. '03,06') or word substrings "
+                         "(e.g. 'scope'). Numeric tokens anchor to leading prefix; '0' alone no "
+                         "longer matches all 10 fixtures.")
+    ap.add_argument("--allow-underrun", action="store_true",
+                    help="override min_runs gate; record results from under-run fixtures anyway "
+                         "(stats will be noisy — see ADR-0017)")
     ap.add_argument("--baseline-mode", choices=["with-plugin", "noplugin"], default="with-plugin",
                     help="noplugin: omit --plugin-dir for the noise-floor reference baseline (ADR-0017 PR-4)")
     args = ap.parse_args()
@@ -398,8 +457,9 @@ def main():
     run_suite(
         args.version, Path(args.tasks), args.runs, Path(args.plugin_root),
         args.model, args.max_budget_usd, args.keep_work_dirs,
-        filter_substr=args.filter,
+        filter_spec=args.filter,
         no_plugin=(args.baseline_mode == "noplugin"),
+        allow_underrun=args.allow_underrun,
     )
 
 
