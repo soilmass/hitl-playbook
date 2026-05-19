@@ -205,6 +205,70 @@ def _h_subagent_invoked(criterion: dict, transcript: dict) -> tuple[bool, dict]:
     }
 
 
+def _h_judge_binary(criterion: dict, transcript: dict) -> tuple[bool, dict]:
+    """
+    Call an LLM judge with a binary rubric. Per ADR-0017 PR-6 / PR-7:
+    only run the judge if the rubric is CALIBRATED (Gwet's AC2 >= 0.7
+    against >=20 human labels). Otherwise SKIP — uncalibrated judges
+    can't be trusted to gate the criterion honestly.
+
+    Fixture spec:
+      kind: judge_binary
+      rubric_id: handback_done_quality_v1   # references evals/judge/rubrics/<id>.md
+      target_artifact: <file>
+    """
+    rubric_id = criterion.get("rubric_id", "")
+    if not rubric_id:
+        return False, {"reason": "criterion missing rubric_id"}
+
+    # Read calibration.json if present
+    from pathlib import Path
+    import json as _json
+    calibration_path = Path(__file__).resolve().parent.parent / "judge" / "calibration.json"
+    if not calibration_path.exists():
+        return True, {
+            "skipped": True,
+            "reason": f"judge_uncalibrated: no calibration.json (rubric {rubric_id})",
+        }
+    try:
+        cal = _json.loads(calibration_path.read_text())
+    except Exception as e:
+        return True, {"skipped": True, "reason": f"calibration.json parse error: {e}"}
+    rubric_info = cal.get(rubric_id, {})
+    if not rubric_info.get("calibrated"):
+        ac2 = rubric_info.get("ac2", "missing")
+        return True, {
+            "skipped": True,
+            "reason": f"judge_uncalibrated: rubric {rubric_id} AC2={ac2} < 0.7",
+        }
+
+    # Calibrated. Run the judge against this transcript's handback.
+    rubric_path = Path(__file__).resolve().parent.parent / "judge" / "rubrics" / f"{rubric_id}.md"
+    if not rubric_path.exists():
+        return False, {"reason": f"rubric file missing: {rubric_path.name}"}
+    # Lazy import + lazy parse — same approach as PR-6 calibrate.py
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "judge"))
+    from calibrate import parse_rubric_prompt, ask_judge
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        return True, {"skipped": True, "reason": "anthropic SDK not installed"}
+    prompt = parse_rubric_prompt(rubric_path)
+    client = Anthropic()
+    handback = transcript.get("final_message", "") or ""
+    judgment = ask_judge(client, prompt, "", handback)
+    label = judgment.get("label", "n/a")
+    if label not in ("yes", "no"):
+        return False, {"reason": f"judge returned malformed label: {label}", "raw": judgment}
+    return (label == "yes"), {
+        "judge_label": label,
+        "judge_reason": judgment.get("reason", ""),
+        "rubric_id": rubric_id,
+        "ac2_at_score_time": rubric_info.get("ac2"),
+    }
+
+
 def _h_skill_invoked(criterion: dict, transcript: dict) -> tuple[bool, dict]:
     needle = criterion.get("skill_substring", "")
     invocations = transcript.get("skills_invoked", []) or []
@@ -223,6 +287,7 @@ HANDLERS = {
     "handback_section": _h_handback_section,
     "subagent_invoked": _h_subagent_invoked,
     "skill_invoked": _h_skill_invoked,
+    "judge_binary": _h_judge_binary,
 }
 
 

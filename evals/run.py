@@ -479,6 +479,17 @@ def run_suite(
                 score["hook_blocks"] = transcript.get("hook_blocks", 0)
                 score["subagents"] = transcript.get("subagents_invoked", [])
                 score["skills"] = transcript.get("skills_invoked", [])
+                # PR-6: persist the handback text + tool summary so the
+                # labeling/calibration harness can replay judges over
+                # historical runs without re-spending API budget. The
+                # final_message is the agent's handback (or "Unknown
+                # command:" on noise floor). tool_summary captures the
+                # first 30 tool names+inputs as labeling context.
+                score["final_message"] = transcript.get("final_message", "")
+                score["tool_summary"] = [
+                    {"tool": t["tool"], "input_preview": str(t.get("input"))[:120]}
+                    for t in transcript.get("tool_calls", [])[:30]
+                ]
 
                 # v2 scorer — per-criterion binary checks (ADR-0017)
                 if fixture.get("criteria"):
