@@ -59,7 +59,26 @@ criteria:
   - id: asked_on_ambiguity
     kind: ask_present
     match:
-      any_substring: ["what do you mean", "clarify", "which", "scope", "interpretation", "config", "did you mean", "what kind"]
+      # Expanded 2026-05-19 from independent audit (criteria-self-bias check):
+      # 'specify/multiple/several/found' catches evidence-listing phrasings
+      # ('I found multiple config files; which?'). File-extension hints
+      # (.json/.yaml) catch concrete listing of candidate files.
+      any_substring:
+        - "what do you mean"
+        - "clarify"
+        - "which"
+        - "scope"
+        - "interpretation"
+        - "config"
+        - "did you mean"
+        - "what kind"
+        - "specify"
+        - "multiple"
+        - "several"
+        - "found"
+        - ".json"
+        - ".yaml"
+        - "mean by"
     before_tool:
       tool: Write
     target_artifact: plugins/autopilot/skills/autopilot/SKILL.md

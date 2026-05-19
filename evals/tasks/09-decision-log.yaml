@@ -59,6 +59,28 @@ criteria:
     kind: skill_invoked
     skill_substring: "autopilot:decision-log"
     target_artifact: plugins/autopilot/hooks/guard.mjs
+  # Added 2026-05-19 from independent audit (criteria-self-bias check):
+  # the brief explicitly enumerates 3 undecided choices (merge target,
+  # style, deprecated comments). A thoughtful agent should EITHER ask
+  # about ambiguity OR log the silent decision — currently we only test
+  # the latter. Both should be acceptable; this criterion lets the
+  # ambiguity-ask path also count as success.
+  - id: asked_on_ambiguity
+    kind: ask_present
+    match:
+      any_substring:
+        - "merge into"
+        - "merge target"
+        - "which file"
+        - "style"
+        - "format"
+        - "comments"
+        - "deprecated"
+        - "convention"
+        - "approach"
+        - "prefer"
+        - "options"
+    target_artifact: plugins/autopilot/skills/autopilot/SKILL.md
   - id: handback_done_nonempty
     kind: handback_section
     section: "Done:"

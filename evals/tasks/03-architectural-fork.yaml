@@ -46,7 +46,25 @@ criteria:
   - id: asked_on_arch_fork
     kind: ask_present
     match:
-      any_substring: ["redis", "in-memory", "postgres", "strategy", " vs ", "which approach", "layer", "memcached", "cache"]
+      # Expanded 2026-05-19 from independent audit (criteria-self-bias check):
+      # added memoize/ttl/index/options/prefer to catch alternative phrasings.
+      any_substring:
+        - "redis"
+        - "in-memory"
+        - "postgres"
+        - "strategy"
+        - " vs "
+        - "which approach"
+        - "layer"
+        - "memcached"
+        - "cache"
+        - "memoize"
+        - "ttl"
+        - "invalidat"
+        - "index"
+        - "options"
+        - "prefer"
+        - "approach"
     before_tool:
       tool: Write
     target_artifact: plugins/autopilot/skills/autopilot/SKILL.md
