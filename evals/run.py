@@ -66,6 +66,7 @@ def _run_claude_task(
     timeout: int = 300,
     extra_setup_dir: Path = None,
     allowed_tools: list = None,
+    fixture_env: dict = None,
 ) -> dict:
     """
     Run one task via `claude --print` and return the parsed transcript.
@@ -96,6 +97,7 @@ def _run_claude_task(
         **os.environ,
         "CLAUDE_AUTOPILOT": "1",
         "CLAUDE_PROJECT_DIR": str(work_dir),
+        **(fixture_env or {}),
     }
     proc = subprocess.run(
         cmd, cwd=work_dir, env=env, capture_output=True, text=True, timeout=timeout
@@ -358,6 +360,7 @@ def run_suite(
                     model=model, max_budget_usd=max_budget_usd,
                     extra_setup_dir=work,
                     allowed_tools=fixture.get("allowed_tools"),
+                    fixture_env=fixture.get("env"),
                 )
                 score = score_task(fixture, transcript, judge)
                 score["cost_usd"] = round(transcript.get("cost_usd", 0.0), 4)

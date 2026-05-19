@@ -174,9 +174,22 @@ function checkBudget(input) {
     block(`budget exceeded (${n} tool calls; red threshold ${BUDGET_RED}). Hand back to human; do not continue.`);
   }
   if (n === BUDGET_YELLOW) {
-    // Soft warning at the threshold: stderr without blocking. Agent surfaces.
+    // Soft warning at the threshold: inject as additionalContext so the
+    // agent actually sees it (stderr alone is invisible to the model on
+    // exit-0 PreToolUse hooks per dogfood finding 2026-05-19).
+    const payload = {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        additionalContext:
+          `AUTOPILOT BUDGET TICK: ${n}/${BUDGET_RED} tool calls used. ` +
+          `You MUST surface a "still on track?" checkpoint via AskUserQuestion ` +
+          `BEFORE running another tool. This is a yellow-tier trigger per ` +
+          `autopilot/SKILL.md categorical-trigger #6 (budget_tick).`,
+      },
+    };
+    process.stdout.write(JSON.stringify(payload));
     process.stderr.write(
-      `autopilot: budget tick (${n}/${BUDGET_RED} tool calls). Surface a "still on track?" checkpoint via AskUserQuestion before the next tool.\n`
+      `autopilot: budget tick (${n}/${BUDGET_RED} tool calls). Agent should surface AskUserQuestion.\n`
     );
   }
 }

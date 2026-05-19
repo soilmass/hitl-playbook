@@ -153,6 +153,7 @@ See [`adr/`](./adr/). Numbered in order. Append-only per [`../standards/11-adrs.
 | [0012](./adr/0012-cost-budget-via-tool-call-counter.md) | Cost/budget governance via tool-call counter |
 | [0013](./adr/0013-cross-platform-node-helper.md) | Cross-platform Node helper for hooks |
 | [0014](./adr/0014-askuserquestion-print-mode-limitation.md) | AskUserQuestion is non-functional in `--print` mode (accepted limitation) |
+| [0015](./adr/0015-pretool-hook-stderr-invisibility.md) | PreToolUse hook stderr is invisible at exit 0; use `additionalContext` JSON to nudge the agent |
 
 ---
 
