@@ -136,6 +136,9 @@ def _parse_stream_json(stream: str, work_dir: Path) -> dict:
 
     # Map tool_use_id -> position in tool_calls so we can attach the result.
     tu_id_to_idx = {}
+    # Most-recent hook_response.stderr keyed by hook_id, so we can attribute
+    # an exit-2 block to its actual stderr message (for block classification).
+    hook_stderr_by_id = {}
 
     for line in stream.splitlines():
         line = line.strip()
@@ -152,8 +155,15 @@ def _parse_stream_json(stream: str, work_dir: Path) -> dict:
         if t == "system" and s == "init":
             session_id = evt.get("session_id", "")
 
-        elif t == "system" and s == "hook_response" and evt.get("exit_code") == 2:
-            hook_blocks += 1
+        elif t == "system" and s == "hook_response":
+            # Track stderr for every hook_response (not just exit 2) so we
+            # can correlate with tool_result.is_error later. PR-3 per
+            # ADR-0017.
+            hid = evt.get("hook_id", "")
+            if hid:
+                hook_stderr_by_id[hid] = evt.get("stderr", "") or ""
+            if evt.get("exit_code") == 2:
+                hook_blocks += 1
 
         elif t == "assistant":
             for blk in evt.get("message", {}).get("content", []) or []:
@@ -173,6 +183,9 @@ def _parse_stream_json(stream: str, work_dir: Path) -> dict:
                                 "question_text": q.get("question", ""),
                                 "category": _classify_ask(q.get("question", "")),
                                 "options": q.get("options", []),
+                                # Position in tool_calls — temporal ordering signal
+                                # for the v2 ask_present criterion (PR-3 / ADR-0017).
+                                "tool_calls_index": idx,
                             })
                     elif blk.get("name") == "Agent":
                         st = blk.get("input", {}).get("subagent_type", "")
@@ -193,6 +206,26 @@ def _parse_stream_json(stream: str, work_dir: Path) -> dict:
                     idx = tu_id_to_idx.get(tu_id)
                     if idx is not None and blk.get("is_error"):
                         tool_calls[idx]["blocked"] = True
+                        # Classify the block source (per ADR-0017 PR-3) using
+                        # any hook stderr we captured + the tool_result content
+                        # as fallback. Stored as block_kind on the tool_call.
+                        from scorer.blocks import classify_block
+                        # Use most-recent hook stderr — heuristic, but the
+                        # block typically immediately follows its hook_response.
+                        last_hook_stderr = next(
+                            iter(reversed(list(hook_stderr_by_id.values()))), ""
+                        )
+                        content_text = ""
+                        if isinstance(blk.get("content"), str):
+                            content_text = blk["content"]
+                        elif isinstance(blk.get("content"), list):
+                            content_text = " ".join(
+                                str(c.get("text", "")) for c in blk["content"]
+                                if isinstance(c, dict)
+                            )
+                        tool_calls[idx]["block_kind"] = classify_block(
+                            last_hook_stderr, content_text
+                        )
 
         elif t == "result":
             cost_usd = float(evt.get("total_cost_usd", 0.0))

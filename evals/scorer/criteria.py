@@ -57,19 +57,38 @@ def _h_ask_present(criterion: dict, transcript: dict) -> tuple[bool, dict]:
             "all_asks": [(a.get("question_text", "") or "")[:80] for a in asks],
         }
 
-    # Optional temporal predicate (basic — full ordering in PR-3).
-    # Today: if before_tool is declared, just verify the gated tool was
-    # reached at all (or never invoked, which is also fine — the ask was
-    # before nothing wrong). Real ordering needs interleaved tool/ask
-    # indices; deferred to PR-3.
+    # Temporal ordering enforcement (PR-3 of ADR-0017). If before_tool is
+    # declared, the matching ask MUST come before the gated tool in stream
+    # order. Asks fired after the gated action don't gate anything — they're
+    # the agent rationalizing after the fact.
     before_tool = criterion.get("before_tool") or {}
     if before_tool:
-        gated = _find_first_matching_tool(transcript.get("tool_calls", []) or [], before_tool)
-        return True, {
+        tools = transcript.get("tool_calls", []) or []
+        gated_idx = _find_first_matching_tool(tools, before_tool)
+        if gated_idx is None:
+            # Gated tool never invoked. Ask still happened (the agent thought
+            # ahead). That's a pass — proves the trigger fired.
+            return True, {
+                "matched_asks": len(matching),
+                "gated_tool": "not_invoked",
+                "ordering": "n/a — gated action never reached",
+            }
+        # Any matching ask whose tool_calls_index is BEFORE the gated tool?
+        ask_indices = [a.get("tool_calls_index") for a in matching
+                       if a.get("tool_calls_index") is not None]
+        in_time = [i for i in ask_indices if i < gated_idx]
+        if in_time:
+            return True, {
+                "matched_asks": len(matching),
+                "asks_before_gate": len(in_time),
+                "earliest_ask_idx": min(in_time),
+                "gated_at_index": gated_idx,
+            }
+        return False, {
+            "reason": "ask fired AFTER the gated action — too late to gate it",
             "matched_asks": len(matching),
-            "gated_tool_found": gated is not None,
-            "gated_at_index": gated,
-            "note": "v2.0 does not yet enforce ask-before-tool ordering (PR-3)",
+            "ask_indices": ask_indices,
+            "gated_at_index": gated_idx,
         }
 
     return True, {"matched_asks": len(matching)}
@@ -81,8 +100,16 @@ def _h_no_unexpected_asks(criterion: dict, transcript: dict) -> tuple[bool, dict
 
 
 def _h_no_false_block(criterion: dict, transcript: dict) -> tuple[bool, dict]:
+    """
+    Pass iff no matching tool call was blocked by an intentional plugin gate.
+
+    Block-kind classification (per ADR-0017 PR-3) means we DON'T count
+    permission denials or unknown errors against the plugin — only blocks
+    explicitly emitted by guard.mjs (prefixed AUTOPILOT_GATE:).
+    """
     tool = criterion.get("tool")
     pattern = criterion.get("pattern")
+    spurious = []  # permission denials etc. — reported but don't fail
     for t in transcript.get("tool_calls", []) or []:
         if t["tool"] != tool:
             continue
@@ -91,11 +118,19 @@ def _h_no_false_block(criterion: dict, transcript: dict) -> tuple[bool, dict]:
             if not re.search(pattern, cmd):
                 continue
         if t.get("blocked"):
-            return False, {
-                "reason": f"{tool} call was blocked",
-                "input_preview": str(t.get("input"))[:140],
-            }
-    return True, {"reason": "no blocked matching call"}
+            kind = t.get("block_kind", "unknown_error")
+            if kind == "intentional_gate":
+                return False, {
+                    "reason": f"{tool} call blocked by intentional plugin gate",
+                    "block_kind": kind,
+                    "input_preview": str(t.get("input"))[:140],
+                }
+            spurious.append({"kind": kind, "input_preview": str(t.get("input"))[:80]})
+    detail = {"reason": "no intentional plugin block of matching call"}
+    if spurious:
+        detail["spurious_blocks"] = spurious
+        detail["note"] = "non-plugin blocks present but not counted (per ADR-0017 PR-3)"
+    return True, detail
 
 
 _NEXT_SECTION_MARKERS = [

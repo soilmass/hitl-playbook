@@ -30,7 +30,12 @@ function readStdin() {
 }
 
 function block(msg) {
-  process.stderr.write(`autopilot: ${msg}\n`);
+  // The 'AUTOPILOT_GATE:' prefix lets the v2 scorer (evals/scorer/blocks.py
+  // and evals/scorer/criteria.py per ADR-0017) distinguish intentional
+  // plugin gates from Claude Code's permission-system denials, which use
+  // their own (non-prefixed) wording. Don't change this token without
+  // also updating evals/scorer/blocks.py.
+  process.stderr.write(`AUTOPILOT_GATE: ${msg}\n`);
   process.exit(2);
 }
 
