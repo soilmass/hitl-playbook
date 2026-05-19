@@ -93,6 +93,48 @@ function checkBash(input) {
   }
 }
 
+// --- irreversible-warning patterns ----------------------------------------
+//
+// Commands that are non-destructive (i.e., the destructive regex doesn't
+// block them) but ARE state-mutating and hard-to-unwind: git commit,
+// git push (non-force), git tag, gh pr create, deploy commands. The
+// hook does NOT block these — that would make routine git unusable.
+// Instead it injects an additionalContext nudge so the agent recognizes
+// the irreversibility yellow trigger before invoking the command.
+// Same mechanism as the budget-yellow tick (ADR-0015): stderr is
+// invisible at exit 0, so use stdout JSON to reach the model.
+
+const IRREVERSIBLE_PATTERNS = [
+  /\bgit\s+commit\b(?!.*--amend)/i,     // commit (any), excluding amend
+  /\bgit\s+push\b/i,                    // push (force already caught above)
+  /\bgit\s+tag\b/i,                     // tag creation
+  /\bgh\s+pr\s+create\b/i,              // open PR
+  /\bnpm\s+publish\s+--dry-run/i,       // not real publish but worth noting
+];
+
+function checkIrreversibleWarning(input) {
+  const cmd = String(input?.tool_input?.command ?? '');
+  if (!cmd) return;
+  for (const pat of IRREVERSIBLE_PATTERNS) {
+    if (pat.test(cmd)) {
+      const payload = {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          additionalContext:
+            `AUTOPILOT IRREVERSIBILITY NUDGE: about to run \`${cmd.slice(0, 80)}\` ` +
+            `which is non-destructive but state-mutating and hard to unwind. ` +
+            `Per autopilot/SKILL.md categorical-trigger #5 (irreversibility), ` +
+            `you SHOULD invoke AskUserQuestion before proceeding unless the ` +
+            `brief explicitly authorized this exact action. If the brief just ` +
+            `implied it (e.g. "make teammates see this"), ASK first.`,
+        },
+      };
+      process.stdout.write(JSON.stringify(payload));
+      return; // one nudge per tool call
+    }
+  }
+}
+
 // --- pretool-write --------------------------------------------------------
 
 // Resolve a path through symlinks even if the file doesn't exist yet.
@@ -274,7 +316,7 @@ function sessionStart() {
 const stdinInput = (mode === 'session-start') ? {} : readStdin();
 
 switch (mode) {
-  case 'pretool-bash':    checkBudget(stdinInput); checkBash(stdinInput); break;
+  case 'pretool-bash':    checkBudget(stdinInput); checkBash(stdinInput); checkIrreversibleWarning(stdinInput); break;
   case 'pretool-write':   checkBudget(stdinInput); checkWrite(stdinInput); break;
   case 'pretool-budget':  checkBudget(stdinInput); break;
   case 'posttool-log':    logToolUse(stdinInput); break;
