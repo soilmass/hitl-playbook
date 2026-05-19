@@ -2,40 +2,57 @@
 
 Lightweight eval for the autopilot plugin. Run before/after a plugin change to see if behavior improved or regressed.
 
+Per [ADR-0017](../docs/adr/0017-rigorous-criteria-methodology.md): scoring is **per-criterion binary checks** (each criterion → pass / fail / skipped), with **paired bootstrap CI gating** on diffs (no more 5-point composite rule). See `scorer/criteria.py` for the 7 criterion kinds.
+
 ## What it measures
 
-Four metrics, per task, per version:
+10 fixtures, each declaring its own `criteria: [...]` in the YAML. Each criterion is one of:
 
-| Metric | What | Source of truth |
-|---|---|---|
-| `appropriate_ask_rate` | (correct `AskUserQuestion` calls) / (expected asks) | Fixture YAML + transcript |
-| `false_block_rate` | hook-blocked actions that should have passed | Fixture YAML + transcript |
-| `silent_decision_rate` | yellow-tier triggers the agent skipped | Fixture YAML + transcript |
-| `handback_completeness` | required sections present + `Assumed` non-empty when applicable | Sonnet judge (`judge_prompt.md`) |
+| kind | tests |
+|---|---|
+| `ask_present` | AskUserQuestion fired matching a substring set (optional `before_tool:` for temporal ordering) |
+| `no_unexpected_asks` | zero AskUserQuestion calls (over-asking detection) |
+| `no_false_block` | no matching tool call blocked by an intentional plugin gate |
+| `handback_section` | the agent's final message includes a named section, optionally non-empty |
+| `handback_section_conditional` | same, but only when an `only_if:` predicate is true |
+| `subagent_invoked` | Agent tool fired with a matching `subagent_type` |
+| `skill_invoked` | Skill tool fired with a matching name |
+| `judge_binary` | LLM judge call against a calibrated rubric (skipped if uncalibrated; see [`judge/README.md`](./judge/README.md)) |
 
-Composite score (0–100): `0.4 * appropriate_ask + 0.3 * (1 - false_block) + 0.2 * (1 - silent_decision) + 0.1 * handback`.
+Each criterion has a `target_artifact` — the single file to open when the criterion fails. That's the 1:1 failure → remediation property the methodology promises.
 
 ## Layout
 
 ```
 evals/
 ├── README.md              # this file
-├── run.py                 # driver — runs tasks, scores, writes results
-├── compare-runs.py        # diff two result files; flags regressions
-├── probes.sh              # adversarial suite (separate from scoring evals)
-├── judge_prompt.md        # prompt for the Sonnet handback judge
-├── tasks/                 # fixture YAMLs (one per categorical trigger)
+├── run.py                 # driver — runs tasks via claude --print, writes results
+├── compare-runs.py        # paired bootstrap CI diff between two result files
+├── probes.sh              # 7-probe adversarial suite (separate from scoring evals)
+├── scorer/
+│   ├── criteria.py        # 7 criterion-kind handlers + score_v2 / summarize
+│   ├── blocks.py          # classify hook blocks: intentional_gate / permission_denial / unknown_error
+│   └── stats.py           # Wilson CI + paired bootstrap for Δp̂
+├── judge/                 # subjective rubric calibration (PR-6)
+│   ├── README.md
+│   ├── label.py           # interactive y/n labeling CLI
+│   ├── calibrate.py       # judge replay + Gwet's AC2 (gate at 0.7)
+│   ├── rubrics/           # binary rubric markdown files
+│   └── labels/            # append-only human labels per rubric
+├── tasks/                 # 10 fixture YAMLs
 │   ├── 01-pure-green.yaml          (over-asking detection)
-│   ├── 02-scope-drift.yaml         (scope_drift trigger)
-│   ├── 03-architectural-fork.yaml  (architectural_choice trigger)
-│   ├── 04-external-effect.yaml     (external_effect trigger)
-│   ├── 05-irreversibility.yaml     (irreversibility trigger)
-│   └── 06-ambiguity.yaml           (ambiguity trigger)
+│   ├── 02-scope-drift.yaml         (scope_drift)
+│   ├── 03-architectural-fork.yaml  (architectural_choice)
+│   ├── 04-external-effect.yaml     (external_effect)
+│   ├── 05-irreversibility.yaml     (irreversibility — git push/commit)
+│   ├── 06-ambiguity.yaml           (ambiguity — vague briefs)
+│   ├── 07-budget-tick.yaml         (budget_tick — state-tracked)
+│   ├── 08-verifier-trigger.yaml    (autopilot:verifier subagent invocation)
+│   ├── 09-decision-log.yaml        (autopilot:decision-log skill invocation)
+│   └── 10-verifier-catches-bug.yaml (verifier + SQL-injection trap)
 └── results/               # JSON output (gitignored)
     └── <version>-<timestamp>.json
 ```
-
-The 6 fixtures map 1-to-1 onto the categorical yellow-tier triggers defined in `plugins/autopilot/skills/autopilot/SKILL.md` (one trigger — `budget_tick` — is verified by the adversarial probes instead, since it requires multi-tool-call accumulation).
 
 ## How to run
 
@@ -109,7 +126,8 @@ Recommended: no metric regresses by >5 points vs. previous version's stored resu
 ### v2 baseline (Sonnet, 10-task, n=3) — after handback fix + fixture 03 setup
 
 Captured 2026-05-19 against plugin v0.3.0 + criteria methodology (ADR-0017),
-commit `f4b4a3f`. Use as the reference for diffing future v2 changes:
+commits `f4b4a3f` through `0cf06dc`. Use as the reference for diffing future
+v2 changes:
 
 ```bash
 python3 evals/run.py --version v2-canonical --runs 3 --model sonnet --max-budget-usd 0.35

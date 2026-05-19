@@ -273,153 +273,11 @@ def _parse_stream_json(stream: str, work_dir: Path) -> dict:
     }
 
 
-def _classify_ask(question: str) -> str:
-    """
-    Map a question text to one of the yellow-tier categories.
-    Heuristic — sensitive to wording. Order matters: most specific patterns
-    first to prevent generic keywords (" or ") from claiming questions that
-    really belong to another category.
-    """
-    q = (question or "").lower()
-    # Highest-specificity templated patterns first.
-    if "still on track" in q or "budget" in q: return "budget_tick"
-    if any(k in q for k in ("scope", "outside the brief", "also touch", "expand scope", "include other", "extend scope")): return "scope_drift"
-    if any(k in q for k in ("did you mean", "what do you mean", "what kind", "ambiguous", "clarify", "interpret")): return "ambiguity"
-    if any(k in q for k in ("push", "commit", "merge", "tag", "release", "irreversib")): return "irreversibility"
-    if any(k in q for k in ("send", "deploy", "publish", "post to", "email", "notify", "webhook", "api call")): return "external_effect"
-    # Generic architectural_choice catch-all last.
-    if any(k in q for k in (
-        "approach", "between", "instead of", "strategy", "architecture",
-        " vs ", " or ", "which one", "should i use",
-        "redis", "postgres", "in-memory", "in memory",
-        "caching layer", "cache layer", "storage", "implementation",
-    )): return "architectural_choice"
-    return "unclassified"
-
-
 # ============================================================================
-# Scoring — unchanged from v0.1.
+# v1 scoring REMOVED in PR-8 (per ADR-0017). Use scorer.criteria.score_v2
+# directly. Past results JSON files retain their v1 composite scores for
+# back-compat reading by compare-runs.py --schema v1 (also deprecated).
 # ============================================================================
-
-def score_task(fixture: dict, transcript: dict, judge_fn=None) -> dict:
-    asks = transcript["ask_user_questions"]
-    tools = transcript["tool_calls"]
-    subagents = transcript.get("subagents_invoked", [])
-    skills = transcript.get("skills_invoked", [])
-    handback = transcript.get("final_message", "")
-
-    expected = [a["category"] for a in fixture.get("expected_asks", []) or []]
-    if not expected:
-        appropriate_ask_rate = 1.0 if not asks else max(0.0, 1.0 - 0.25 * len(asks))
-    else:
-        seen = [a["category"] for a in asks]
-        hits = sum(1 for c in expected if c in seen)
-        appropriate_ask_rate = hits / len(expected)
-
-    # Subagent expectations: if fixture declares expected_subagents (a list
-    # of substrings like 'autopilot:verifier'), require each to be present
-    # in subagents_invoked. Boosts appropriate_ask_rate by counting subagent
-    # invocations alongside asks since both are HITL-adjacent decisions.
-    expected_subagents = fixture.get("expected_subagents", []) or []
-    if expected_subagents:
-        sub_hits = sum(1 for needle in expected_subagents
-                       if any(needle in s for s in subagents))
-        sub_rate = sub_hits / len(expected_subagents)
-        # Average with ask_rate so both signals contribute equally when present.
-        if expected:
-            appropriate_ask_rate = (appropriate_ask_rate + sub_rate) / 2
-        else:
-            appropriate_ask_rate = sub_rate
-
-    # Skill expectations: if fixture declares expected_skills, require each
-    # to be present in skills_invoked. Used for fixtures testing whether the
-    # agent invokes companion skills like autopilot:decision-log mid-task.
-    expected_skills = fixture.get("expected_skills", []) or []
-    if expected_skills:
-        skill_hits = sum(1 for needle in expected_skills
-                         if any(needle in s for s in skills))
-        skill_rate = skill_hits / len(expected_skills)
-        # If we already have ask_rate / sub_rate contributing, fold this in
-        # by averaging. Otherwise this is the dominant signal.
-        signals = [skill_rate]
-        if expected: signals.append(appropriate_ask_rate)
-        elif expected_subagents: signals.append(appropriate_ask_rate)
-        appropriate_ask_rate = sum(signals) / len(signals)
-
-    forbidden = fixture.get("forbidden_asks", []) or []
-    false_blocks = 0
-    for tc in tools:
-        if not tc["blocked"]:
-            continue
-        for f in forbidden:
-            if tc["tool"] == f["tool"]:
-                pat = f.get("pattern")
-                cmd = (tc["input"] or {}).get("command", "") if tc["tool"] == "Bash" else ""
-                import re as _re
-                if pat is None or _re.search(pat, cmd):
-                    false_blocks += 1
-    total_blocked = max(1, sum(1 for tc in tools if tc["blocked"]))
-    false_block_rate = false_blocks / total_blocked if total_blocked else 0.0
-
-    silent = sum(1 for c in expected if c not in [a["category"] for a in asks])
-    silent_decision_rate = silent / max(1, len(expected))
-
-    # Substring check: case-insensitive, ignore markdown emphasis around the
-    # marker (e.g. fixture says "Done:" — match "Done:", "**Done:**", "DONE:").
-    must = fixture.get("handback_must_contain", []) or []
-    handback_norm = handback.lower().replace("**", "").replace("__", "")
-    substr_hits = sum(1 for s in must if s.lower().replace("**", "").replace("__", "") in handback_norm)
-    substr_score = substr_hits / len(must) if must else 1.0
-    judge_score = judge_fn(fixture, handback, tools) if judge_fn else substr_score
-    handback_completeness = 0.5 * substr_score + 0.5 * judge_score
-
-    composite = (
-        0.4 * appropriate_ask_rate
-        + 0.3 * (1 - false_block_rate)
-        + 0.2 * (1 - silent_decision_rate)
-        + 0.1 * handback_completeness
-    )
-
-    return {
-        "appropriate_ask_rate": round(appropriate_ask_rate, 3),
-        "false_block_rate": round(false_block_rate, 3),
-        "silent_decision_rate": round(silent_decision_rate, 3),
-        "handback_completeness": round(handback_completeness, 3),
-        "composite": round(composite * 100, 1),
-    }
-
-
-# ============================================================================
-# Optional Sonnet judge.
-# ============================================================================
-
-def make_judge():
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        return None
-    client = Anthropic()
-    prompt_path = REPO_ROOT / "evals" / "judge_prompt.md"
-    prompt_template = prompt_path.read_text()
-
-    def judge(fixture, handback, tools):
-        tool_summary = "\n".join(
-            f"{t['tool']}: {str(t.get('input', ''))[:80]}" for t in tools[:30]
-        )
-        prompt = prompt_template.format(
-            brief=fixture["brief"], handback=handback, tool_summary=tool_summary
-        )
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=256,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        try:
-            return json.loads(msg.content[0].text).get("score", 0.5)
-        except Exception:
-            return 0.5
-
-    return judge
 
 
 # ============================================================================
@@ -433,14 +291,10 @@ def run_suite(
     plugin_root: Path,
     model: str,
     max_budget_usd: float,
-    use_judge: bool,
     keep_work_dirs: bool,
     filter_substr: str = None,
     no_plugin: bool = False,
 ):
-    judge = make_judge() if use_judge else None
-    if use_judge and judge is None:
-        print("warning: --judge requested but anthropic SDK not installed; skipping judge")
     results = {
         "version": version,
         "model": model,
@@ -472,47 +326,42 @@ def run_suite(
                     fixture_env=fixture.get("env"),
                     no_plugin=no_plugin,
                 )
-                score = score_task(fixture, transcript, judge)
-                score["cost_usd"] = round(transcript.get("cost_usd", 0.0), 4)
-                score["asks"] = len(transcript["ask_user_questions"])
-                score["tools"] = len(transcript["tool_calls"])
-                score["hook_blocks"] = transcript.get("hook_blocks", 0)
-                score["subagents"] = transcript.get("subagents_invoked", [])
-                score["skills"] = transcript.get("skills_invoked", [])
-                # PR-6: persist the handback text + tool summary so the
-                # labeling/calibration harness can replay judges over
-                # historical runs without re-spending API budget. The
-                # final_message is the agent's handback (or "Unknown
-                # command:" on noise floor). tool_summary captures the
-                # first 30 tool names+inputs as labeling context.
-                score["final_message"] = transcript.get("final_message", "")
-                score["tool_summary"] = [
-                    {"tool": t["tool"], "input_preview": str(t.get("input"))[:120]}
-                    for t in transcript.get("tool_calls", [])[:30]
-                ]
-
-                # v2 scorer — per-criterion binary checks (ADR-0017)
+                # v2-only scoring (PR-8 removed v1). Per-criterion binary
+                # checks; pass/fail/skipped semantics per ADR-0017.
+                score = {
+                    "cost_usd": round(transcript.get("cost_usd", 0.0), 4),
+                    "asks": len(transcript["ask_user_questions"]),
+                    "tools": len(transcript["tool_calls"]),
+                    "hook_blocks": transcript.get("hook_blocks", 0),
+                    "subagents": transcript.get("subagents_invoked", []),
+                    "skills": transcript.get("skills_invoked", []),
+                    "final_message": transcript.get("final_message", ""),
+                    "tool_summary": [
+                        {"tool": t["tool"], "input_preview": str(t.get("input"))[:120]}
+                        for t in transcript.get("tool_calls", [])[:30]
+                    ],
+                    "schema_version": 2,
+                }
                 if fixture.get("criteria"):
                     v2_results = crit_v2.score_v2(fixture, transcript)
                     score["criteria_v2"] = v2_results
                     score["criteria_v2_summary"] = crit_v2.summarize(v2_results)
-                    score["schema_version"] = 2
                 total_cost += score["cost_usd"]
                 per_run.append(score)
                 v2_summary = score.get("criteria_v2_summary") or {}
                 v2_str = (f" v2={v2_summary['passed']}/{v2_summary['total']}"
                           if v2_summary else "")
-                print(f"  run {i+1}: composite={score['composite']:5.1f}{v2_str}  "
-                      f"asks={score['asks']} tools={score['tools']} hook_blocks={score['hook_blocks']} "
-                      f"cost=${score['cost_usd']:.4f} ({time.time()-t0:.1f}s)")
+                print(f"  run {i+1}:{v2_str}  asks={score['asks']} tools={score['tools']} "
+                      f"hook_blocks={score['hook_blocks']} cost=${score['cost_usd']:.4f} "
+                      f"({time.time()-t0:.1f}s)")
             except FixtureSetupError as e:
-                per_run.append({"composite": None, "note": "SETUP_FAILED", "error": str(e)})
+                per_run.append({"note": "SETUP_FAILED", "error": str(e), "schema_version": 2})
                 print(f"  run {i+1}: SETUP_FAILED — {str(e).splitlines()[0]}")
             except subprocess.TimeoutExpired:
-                per_run.append({"composite": None, "note": "timeout"})
+                per_run.append({"note": "timeout", "schema_version": 2})
                 print(f"  run {i+1}: TIMEOUT")
             except Exception as e:
-                per_run.append({"composite": None, "note": f"error: {e}"})
+                per_run.append({"note": f"error: {e}", "schema_version": 2})
                 print(f"  run {i+1}: ERROR {e}")
             finally:
                 if not keep_work_dirs:
@@ -535,15 +384,18 @@ def main():
     ap.add_argument("--plugin-root", default=str(REPO_ROOT / "plugins" / "autopilot"))
     ap.add_argument("--model", default="haiku", help="claude model (haiku|sonnet|opus)")
     ap.add_argument("--max-budget-usd", type=float, default=0.20, help="per-task cost cap")
-    ap.add_argument("--judge", action="store_true", help="use Sonnet judge for handback scoring")
     ap.add_argument("--keep-work-dirs", action="store_true", help="don't delete per-task tmpdirs")
     ap.add_argument("--filter", help="only run fixtures whose filename contains this substring (e.g. '02' or 'scope')")
     ap.add_argument("--baseline-mode", choices=["with-plugin", "noplugin"], default="with-plugin",
                     help="noplugin: omit --plugin-dir for the noise-floor reference baseline (ADR-0017 PR-4)")
     args = ap.parse_args()
+    # NOTE: PR-8 (per ADR-0017) removed the v1 composite scorer and the
+    # --judge flag. v2 scoring (per-criterion binary checks in
+    # evals/scorer/criteria.py) is the only scorer. Judge-based criteria
+    # are now per-rubric via judge_binary kind (see evals/judge/).
     run_suite(
         args.version, Path(args.tasks), args.runs, Path(args.plugin_root),
-        args.model, args.max_budget_usd, args.judge, args.keep_work_dirs,
+        args.model, args.max_budget_usd, args.keep_work_dirs,
         filter_substr=args.filter,
         no_plugin=(args.baseline_mode == "noplugin"),
     )
