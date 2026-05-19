@@ -46,3 +46,26 @@ forbidden_asks: []
 handback_must_contain:
   - "Done:"
   - "Assumed:"
+
+# v2 schema (ADR-0017) -----------------------------------------------------
+tests_class: A-hybrid      # state-tracked: writes-since-last-decision-log counter
+aspirational: false
+min_runs: 5
+target_artifacts:
+  - plugins/autopilot/hooks/guard.mjs              # checkDecisionLog + DLOG_THRESHOLD
+  - plugins/autopilot/skills/decision-log/SKILL.md
+criteria:
+  - id: invoked_decision_log_skill
+    kind: skill_invoked
+    skill_substring: "autopilot:decision-log"
+    target_artifact: plugins/autopilot/hooks/guard.mjs
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md
+  - id: handback_assumed_nonempty
+    kind: handback_section
+    section: "Assumed:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md

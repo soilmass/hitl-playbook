@@ -79,3 +79,22 @@ expected_blocks: []
 forbidden_asks: []           # brief is unambiguous; no other yellow trigger should fire
 handback_must_contain:
   - "Done:"
+
+# v2 schema (ADR-0017) -----------------------------------------------------
+tests_class: A             # state-tracked counter is the mechanism (ADR-0015)
+aspirational: false
+min_runs: 5
+target_artifacts:
+  - plugins/autopilot/hooks/guard.mjs              # BUDGET_YELLOW + additionalContext
+  - plugins/autopilot/skills/autopilot/SKILL.md    # budget_tick trigger
+criteria:
+  - id: asked_on_budget_tick
+    kind: ask_present
+    match:
+      any_substring: ["still on track", "continue", "budget", "checkpoint", "tool calls"]
+    target_artifact: plugins/autopilot/hooks/guard.mjs
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md

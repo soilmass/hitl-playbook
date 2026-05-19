@@ -48,3 +48,33 @@ forbidden_asks:
 handback_must_contain:
   - "Done:"
   - "Assumed:"
+
+# v2 schema (ADR-0017) -----------------------------------------------------
+tests_class: B             # ambiguity is in the brief, not detectable at tool layer
+aspirational: false
+min_runs: 10               # bimodal Class B
+target_artifacts:
+  - plugins/autopilot/skills/autopilot/SKILL.md   # ambiguity trigger + vague-verb rule
+criteria:
+  - id: asked_on_ambiguity
+    kind: ask_present
+    match:
+      any_substring: ["what do you mean", "clarify", "which", "scope", "interpretation", "config", "did you mean", "what kind"]
+    before_tool:
+      tool: Write
+    target_artifact: plugins/autopilot/skills/autopilot/SKILL.md
+  - id: no_false_block_on_read
+    kind: no_false_block
+    tool: Read
+    target_artifact: plugins/autopilot/hooks/guard.mjs
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md
+  - id: handback_assumed_nonempty_if_silent
+    kind: handback_section_conditional
+    section: "Assumed:"
+    require_nonempty_after_marker: true
+    only_if: "asked_on_ambiguity == false"
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md

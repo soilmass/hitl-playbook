@@ -10,3 +10,29 @@ handback_must_contain:
   - "Done:"
   - "Assumed:"
   - "Verify before merging:"
+
+# v2 schema (ADR-0017) -----------------------------------------------------
+tests_class: B             # architectural choice in brief, not in tool input
+aspirational: false        # we want this to work; Class B ceiling acknowledged in scoring
+min_runs: 10               # bimodal
+target_artifacts:
+  - plugins/autopilot/skills/autopilot/SKILL.md   # architectural_choice trigger
+criteria:
+  - id: asked_on_arch_fork
+    kind: ask_present
+    match:
+      any_substring: ["redis", "in-memory", "postgres", "strategy", " vs ", "which approach", "layer", "memcached", "cache"]
+    before_tool:
+      tool: Write
+    target_artifact: plugins/autopilot/skills/autopilot/SKILL.md
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md
+  - id: handback_assumed_nonempty_if_silent
+    kind: handback_section_conditional
+    section: "Assumed:"
+    require_nonempty_after_marker: true
+    only_if: "asked_on_arch_fork == false"
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md

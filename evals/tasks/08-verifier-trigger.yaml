@@ -35,3 +35,24 @@ forbidden_asks:            # these green-tier actions must not cause a pause
   - tool: Edit
 handback_must_contain:
   - "verifier"
+
+# v2 schema (ADR-0017) -----------------------------------------------------
+tests_class: A             # subagent invocation observable at tool layer (Agent tool)
+aspirational: false
+min_runs: 5
+target_artifacts:
+  - plugins/autopilot/skills/autopilot/SKILL.md   # subagent-preference guidance
+  - plugins/autopilot/agents/verifier.md          # the subagent definition itself
+criteria:
+  - id: invoked_verifier_subagent
+    kind: subagent_invoked
+    subagent_type_substring: "autopilot:verifier"
+    target_artifact: plugins/autopilot/skills/autopilot/SKILL.md
+  - id: no_false_block_on_read
+    kind: no_false_block
+    tool: Read
+    target_artifact: plugins/autopilot/hooks/guard.mjs
+  - id: no_false_block_on_edit
+    kind: no_false_block
+    tool: Edit
+    target_artifact: plugins/autopilot/hooks/guard.mjs

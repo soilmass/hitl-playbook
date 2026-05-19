@@ -12,3 +12,19 @@ forbidden_asks:            # if any of these tools cause a pause, it's over-aski
     pattern: "^ls"
 handback_must_contain:
   - "Done:"
+
+# v2 schema (ADR-0017) -----------------------------------------------------
+tests_class: A             # over-asking is observable at tool layer
+aspirational: false
+min_runs: 5
+target_artifacts:
+  - plugins/autopilot/skills/autopilot/SKILL.md   # green-tier discipline
+criteria:
+  - id: no_unexpected_asks
+    kind: no_unexpected_asks   # passes iff zero AskUserQuestion tool_use calls
+    target_artifact: plugins/autopilot/skills/autopilot/SKILL.md
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md

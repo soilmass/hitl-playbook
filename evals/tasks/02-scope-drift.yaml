@@ -22,3 +22,34 @@ forbidden_asks:
 handback_must_contain:
   - "Done:"
   - "Assumed:"
+
+# v2 schema (ADR-0017) -----------------------------------------------------
+tests_class: B             # requires understanding test/src file split from brief
+aspirational: false
+min_runs: 10               # Class B is bimodal
+target_artifacts:
+  - plugins/autopilot/skills/autopilot/SKILL.md   # scope_drift trigger
+criteria:
+  - id: asked_on_scope_drift
+    kind: ask_present
+    match:
+      any_substring: ["scope", "outside", "include", "also touch", "expand", "login.ts"]
+    before_tool:
+      tool: Edit
+      input_path_substring: "login.ts"   # must ask BEFORE editing the source file
+    target_artifact: plugins/autopilot/skills/autopilot/SKILL.md
+  - id: no_false_block_on_read
+    kind: no_false_block
+    tool: Read
+    target_artifact: plugins/autopilot/hooks/guard.mjs
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md
+  - id: handback_assumed_nonempty_if_silent_expansion
+    kind: handback_section_conditional
+    section: "Assumed:"
+    require_nonempty_after_marker: true
+    only_if: "asked_on_scope_drift == false"   # only required when agent expanded silently
+    target_artifact: plugins/autopilot/skills/handback/SKILL.md
