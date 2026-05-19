@@ -6,28 +6,41 @@ binary check. Each criterion has a `kind` (selecting a handler) and a
 `target_artifact` (the single file to open when it fails — 1:1 failure→
 remediation mapping).
 
-Supported kinds (current as of PR-2):
+Supported kinds (current as of PR-6, with PR-3 + PR-6 additions):
 
   ask_present                    AskUserQuestion fired matching substring
                                  predicate. Optional before_tool: orders
-                                 the ask before a specific tool call.
+                                 the ask before a specific tool call (PR-3
+                                 temporal validation).
   no_unexpected_asks             Passes iff zero AskUserQuestion calls.
   no_false_block                 No blocked tool call of the named kind.
+                                 Uses scorer.blocks.classify_block (PR-3)
+                                 to distinguish intentional plugin gates
+                                 from generic permission denials.
   handback_section               Final message contains a named section
                                  marker; optional require_nonempty_after_marker
                                  demands content after the marker.
   handback_section_conditional   Same as handback_section, but only
                                  evaluated when only_if predicate is true.
+                                 Note: not in HANDLERS dict — score_v2
+                                 dispatches to _h_handback_section after
+                                 evaluating the predicate (see score_v2).
   subagent_invoked               Agent tool fired with matching
                                  subagent_type substring.
   skill_invoked                  Skill tool fired with matching skill
                                  name substring.
+  judge_binary                   LLM judge call against a calibrated
+                                 rubric (PR-6). Returns ('skipped',
+                                 'judge_uncalibrated') if the rubric's
+                                 Gwet's AC2 < 0.7 in evals/judge/
+                                 calibration.json. As of 2026-05-19, no
+                                 fixture declares this kind; it's the
+                                 migration target for PR-7 (handback
+                                 quality currently scored by structural
+                                 handback_section criteria only).
 
 Each handler returns `(passed: bool, detail: dict)`. The detail goes
 into the results JSON so failures can be debugged without re-running.
-
-Future kinds (PR-3 and later) — temporal validation gates, judge_binary
-with calibrated rubrics — will register here.
 """
 
 from __future__ import annotations

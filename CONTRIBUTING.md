@@ -7,36 +7,38 @@ This repo holds the web-engineering playbook + the `autopilot` Claude Code plugi
 Read in this order:
 1. [`docs/hitl-framework.md`](./docs/hitl-framework.md) — the methodology.
 2. [`docs/autopilot-plugin.md`](./docs/autopilot-plugin.md) — what the plugin does.
-3. [`docs/adr/`](./docs/adr/) — why it does it that way (16 decisions, append-only).
+3. [`docs/adr/`](./docs/adr/) — why it does it that way (17 decisions, append-only).
 4. [`evals/README.md`](./evals/README.md) — how we measure changes.
 
 If you're about to file an issue or PR that contradicts an ADR, read that ADR first; the contradiction may already be addressed.
 
 ## Plugin changes: the eval-driven workflow
 
-Every change to `plugins/autopilot/skills/`, `commands/`, `agents/`, or `hooks/` must be measured against the canonical Sonnet baseline. If you can't measure it, you can't ship it.
+Every change to `plugins/autopilot/skills/`, `commands/`, `agents/`, or `hooks/` must be measured against the canonical Sonnet baseline. If you can't measure it, you can't ship it. Per ADR-0017, scoring is per-criterion binary with paired-bootstrap CI gating; the older 5-point composite rule is gone.
 
 ```bash
-# 1. Establish a baseline against current code (or use the documented one
-#    in evals/README.md if it's still fresh)
-python3 evals/run.py --version baseline --runs 3 --model sonnet --max-budget-usd 0.35
+# 1. Establish a baseline against current code (or use the v2 10-task
+#    canonical in evals/README.md if it's still fresh — currently 94.7
+#    overall pass-rate at commit 0cf06dc).
+python3 evals/run.py --version baseline --runs 5 --model sonnet --max-budget-usd 0.35
 
-# 2. Make your change. Keep diffs small — eval signal is weakest on
-#    multi-change PRs.
+# 2. Make your change. Keep diffs small — per-criterion attribution is
+#    cleanest on single-purpose PRs.
 
 # 3. Re-measure
-python3 evals/run.py --version after-change --runs 3 --model sonnet --max-budget-usd 0.35
+python3 evals/run.py --version after-change --runs 5 --model sonnet --max-budget-usd 0.35
 
 # 4. Diff
 python3 evals/compare-runs.py --latest
-# Exit code 1 = regression > 5 composite points on at least one task.
-#                Investigate before merge.
+# Exit code 1 = at least one criterion's Δp̂ CI excludes zero AND
+#                |Δp̂| ≥ 0.15 (effect-size floor). Each flagged
+#                criterion names the single target_artifact to open.
 ```
 
-For changes that affect only one trigger, use `--filter <NN>` to re-run just the relevant fixture and save cost:
+For changes that affect only one trigger, use `--filter <NN>` to re-run just the relevant fixture and save cost (note: `--filter` substring-matches, so `--filter 0` matches all 10 fixtures since every filename contains `0`; use a 2-digit prefix):
 
 ```bash
-python3 evals/run.py --version after-change --runs 3 --model sonnet --filter 05
+python3 evals/run.py --version after-change --runs 5 --model sonnet --filter 05
 ```
 
 ## Adding a new yellow-tier trigger
@@ -46,13 +48,14 @@ Per [ADR-0016](./docs/adr/0016-mechanism-vs-skill-text-triggers.md), classify th
 - **Class A — detectable at the tool layer** (specific Bash command, file path pattern, etc.). Add a hook nudge in `plugins/autopilot/hooks/guard.mjs` that injects `additionalContext` via stdout JSON. Class A triggers reliably reach ≥90 mean composite score.
 - **Class B — depends on understanding the brief or codebase**. Add the rule to `plugins/autopilot/skills/autopilot/SKILL.md` and accept the bimodal ceiling (~30-57 mean). Document the limit in `docs/autopilot-plugin.md` Known Limitations.
 
-Add a fixture for it in `evals/tasks/`:
-- `expected_asks: [<category>]` — AskUserQuestion expected
-- `expected_subagents: [<name>]` — Agent tool with subagent_type
-- `expected_skills: [<name>]` — Skill tool invocation
-- `setup:` and/or `setup_commands:` if the brief needs context
+Add a fixture for it in `evals/tasks/`. Authoritative schema is v2 `criteria: [...]` per [ADR-0017](./docs/adr/0017-rigorous-criteria-methodology.md) — see [`evals/README.md`](./evals/README.md#adding-a-task) for the full field list. Older fixtures retain v1 keys (`expected_asks`, `expected_subagents`, etc.) as documentation only; the scorer ignores them.
+
+Supporting fixture fields (orthogonal to criteria):
+- `setup:` and/or `setup_commands:` if the brief needs context (files, git init, etc.)
 - `allowed_tools:` if the brief needs commands `--print` mode normally blocks
 - `env:` if the brief needs custom env vars (e.g. low budget thresholds)
+- `tests_class: A | A-hybrid | B` per ADR-0016 — affects `min_runs` default
+- `target_artifacts:` list of files this fixture's failure points at — the 1:1 failure→remediation mapping
 
 ## Adding a new hook pattern
 
