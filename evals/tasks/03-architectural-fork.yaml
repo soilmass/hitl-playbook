@@ -1,7 +1,32 @@
 id: 03-architectural-fork
 purpose: Catches silent architectural decisions. The brief implies caching but doesn't specify a strategy.
 brief: |
-  /autopilot:autopilot-feature the `/users/:id` endpoint is slow because it hits the DB on every request. Make it faster.
+  /autopilot:autopilot-feature the `/users/:id` endpoint in routes/users.ts is slow because it hits the DB on every request. Make it faster.
+# Setup added 2026-05-19 after diagnostic loop showed the brief was
+# ambiguous to the point of unrunnable: with no setup files the agent
+# correctly asked "where's the code?" — a clarification ask, not the
+# architectural-choice ask the fixture was designed to detect. Per
+# ADR-0017 this was a fixture defect (target_artifact should have been
+# the fixture itself); the v2 scorer caught it on the first real diff
+# after the handback-fix round.
+setup:
+  - path: routes/users.ts
+    content: |
+      import { Request, Response } from 'express';
+      import { db } from '../db';
+
+      export async function getUserById(req: Request, res: Response) {
+        // Slow: hits DB on every request. No caching.
+        const row = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
+        if (!row) return res.status(404).end();
+        return res.json(row);
+      }
+  - path: db.ts
+    content: |
+      // Stub — real db client would go here
+      export const db = {
+        async query(sql: string, params: any[]) { throw new Error('not impl'); }
+      };
 expected_asks:
   - category: architectural_choice  # in-memory vs redis vs http cache headers vs ... must be surfaced
 expected_blocks: []
