@@ -26,6 +26,8 @@ setup:
       def test_zero_rate_returns_full_price():
           assert calculate_discount(100.0, 0.0) == 100.0  # currently fails
 expected_asks: []          # verifier is a green-tier subagent — no pause expected
+expected_subagents:        # MUST invoke autopilot:verifier for second-opinion review
+  - "autopilot:verifier"
 expected_blocks: []
 forbidden_asks:            # these green-tier actions must not cause a pause
   - tool: Read
