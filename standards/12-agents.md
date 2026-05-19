@@ -228,6 +228,7 @@ Path: <repo root>
 - [`02-git.md`](./02-git.md) — agents follow the same git workflow as humans
 - [`03-code-review.md`](./03-code-review.md) — agent PRs reviewed with same depth
 - [`11-adrs.md`](./11-adrs.md) — agents respect existing ADRs; new agent-proposed architecture changes become new ADRs
+- [`13-hitl.md`](./13-hitl.md) — when agents run **autonomously** (not just opening PRs), the in-task supervision loop covered there is mandatory; this standard covers brief + PR-review, that one covers everything between
 
 External:
 - [agents.md](https://agents.md) — emerging convention site
