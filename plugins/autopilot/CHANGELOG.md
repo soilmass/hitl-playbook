@@ -2,6 +2,138 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/) — see "Versioning policy" below.
 
+## [0.2.0] - 2026-05-19
+
+Eval-driven iteration cycle following the 0.1.0 ship. All changes below
+are empirically verified via `evals/run.py` against the canonical
+Sonnet baseline. See `evals/README.md` for current per-task scores.
+
+### Fixed — Hooks
+
+- **plugin.json `repository` field schema.** Was using npm-style
+  `{type, url}` object; Claude Code's manifest schema requires a string.
+  The plugin had been failing to load silently in every real session
+  between 0.1.0 and the discovery.
+- **Session-id resolution.** Code used `CLAUDE_SESSION_ID` env var
+  which doesn't exist. Correct name is `CLAUDE_CODE_SESSION_ID`, also
+  available as `session_id` on hook stdin. Without this fix every
+  audit log collapsed into `unknown-session.jsonl`.
+- **macOS Write hook.** Resolve nonexistent paths via walking-ancestor
+  realpath, and accept both `/tmp` and `os.tmpdir()` (macOS uses
+  `/var/folders/.../T` for the latter).
+- **Bash regex bypass-tightening** based on adversarial probe results:
+  hardened against `find -delete`, `dd`, `shred`, `truncate`, escaped
+  `\rm` / `/bin/rm`, env-var indirection (`PATH=...`, `LD_PRELOAD=...`),
+  `git -c alias.X='!rm -rf .'`, base64 piping. PATH pinned + LD_PRELOAD
+  unset inside the guard.
+- **SECRET_PATTERNS over-redaction.** The opaque-token regex matched
+  workspace dir names containing 32+ char `[A-Za-z0-9_-]` runs
+  (e.g. `/tmp/autopilot-eval-07-budget-tick-1d3jcl6o/...` → `/tmp/***/...`).
+  Fixed with `(?<!\/)\b...\b(?!\/)` lookarounds. Known limit:
+  hyphen-rich path segments with 32+ chars between hyphens can still
+  partially match; documented in tests.
+
+### Added — Behavior
+
+- **Behavior:** Budget yellow tick now actually nudges the agent.
+  Was previously stderr-only at hook exit 0, which Claude Code does
+  not surface to the model. Fix: switch to stdout JSON
+  `hookSpecificOutput.additionalContext` injection. Empirical: task
+  07 (budget-tick fixture) went 30 → 96.7 mean composite score on
+  Sonnet 3-run baseline. See ADR-0015.
+- **Behavior:** Irreversibility yellow trigger now nudges on
+  detectable irreversible commands (`git commit`, `git push`,
+  `git tag`, `gh pr create`). Same `additionalContext` mechanism as
+  budget tick. Empirical: task 05 (irreversibility fixture) went
+  30 → 76.7 mean after the patch. The 1-in-3 remaining miss is the
+  same model-bias bimodality seen on architectural-fork (see ADR-0016).
+- **Added — Hook:** new `IRREVERSIBLE_PATTERNS` array in
+  `hooks/guard.mjs` covering the above commands. Non-blocking; agent
+  retains autonomy to proceed if it ignores the nudge.
+
+### Added — Skills
+
+- **Strengthened subagent invocation guidance** in `autopilot/SKILL.md`:
+  *"Use autopilot:scout / autopilot:verifier, NOT the built-in Explore /
+  general-purpose agents."* Empirical: in repeated probes the agent
+  reliably reaches for `autopilot:scout` / `autopilot:verifier` and
+  no longer falls back to the built-in `Explore` agent (4/4 runs of
+  fixture 08 invoked `autopilot:verifier`).
+- **Strengthened ambiguity trigger** in `autopilot/SKILL.md` with
+  explicit "vague action verbs are ambiguous by default" rule:
+  *"Treat vague action verbs (clean up, improve, refactor, modernize,
+  fix, tidy, polish) without a specified target as ambiguous by default."*
+  Limited impact: trigger fires more often but still bimodal.
+- **Strengthened architectural-fork trigger** with explicit anti-
+  rationalization language: *"You will be tempted to rationalize: 'the
+  implementation is obvious'. That rationalization is the failure mode
+  this trigger exists to prevent."* Empirical: marginal improvement.
+- **Cross-skill linking corrected.** `[[name]]` references between
+  skills were decorative — agent didn't follow them. Replaced with
+  explicit `Skill(skill: 'autopilot:<name>')` invocation instructions.
+- **Subagent mention syntax corrected.** Was `[[scout]]`/`[[verifier]]`
+  (skills syntax); real path is the `Agent` tool with
+  `subagent_type: 'autopilot:scout'` (note plugin namespace).
+
+### Added — Plugin metadata
+
+- `plugin.json` now declares `license`, `homepage`, `repository`,
+  `keywords`, `engines.claude-code`.
+
+### Added — Eval / tooling
+
+- `evals/run.py` — wired to `claude --print` end-to-end. Stream-json
+  parsing reflects real Claude Code output shape (tool_use nested in
+  assistant content; AskUserQuestion is a tool, not an event type).
+- `evals/run.py` — per-fixture `setup_commands`, `allowed_tools`,
+  `env` fields support fixtures that need git, npm, or env-var setup.
+- `evals/run.py` — `--filter <substr>` flag for single-task iteration.
+- `evals/run.py` — `score_task` now tracks `Agent` subagent invocations
+  (`expected_subagents` field) and `Skill` invocations (`expected_skills`
+  field). Both contribute to `appropriate_ask_rate` when declared.
+- `evals/compare-runs.py` — diff two result files, flag composite
+  regressions >5 points, exit non-zero. Pre-merge gate.
+- `evals/probes.sh` — 5-probe adversarial regression suite separate
+  from scoring evals.
+- `evals/tasks/` — fixtures 04–09 added (external-effect, irreversibility,
+  ambiguity, budget-tick, verifier-trigger, decision-log). Initial 01–03
+  refined with proper namespacing and Sonnet-appropriate briefs.
+
+### Added — Docs / decisions
+
+- **ADRs 0014–0016** capture the new architectural decisions:
+  - 0014: AskUserQuestion is non-functional in `--print` mode.
+  - 0015: PreToolUse hook stderr is invisible at exit 0; use
+    `additionalContext` JSON.
+  - 0016: Triggers split into mechanism-enforced (Class A) vs
+    skill-text-only (Class B).
+- `docs/autopilot-plugin.md` Known Limitations expanded.
+- `evals/README.md` carries the canonical baseline numbers.
+
+### Behavior — what shifted
+
+`Sonnet 7-task canonical baseline mean composite score:`
+- 02-scope-drift: **90 → 97**
+- 03-arch-fork: 50 → 57 (still bimodal; documented limit)
+- 04-external-effect: **89 → 97**
+- 05-irreversibility: **30 → 77** (irreversibility nudge mechanism)
+- 06-ambiguity: 32 → 32 (skill-text limit; documented in ADR-0016)
+- 07-budget-tick: **NEW → 97** (additionalContext mechanism)
+- Overall: 56 → 71
+
+### Documented limitations (no fix planned)
+
+- `architectural_choice` and `ambiguity` triggers cap around 50-60 mean
+  on Sonnet; brief-content-only triggers are not mechanism-enforceable
+  (ADR-0016).
+- `AskUserQuestion` does not function in `--print` mode (ADR-0014);
+  plugin is fundamentally an interactive-mode tool. Eval measures intent
+  only.
+- Hook is NOT a security boundary against an adversarial / compromised
+  model (ADR-0006).
+
+---
+
 ## [0.1.0] - 2026-05-18
 
 Initial cut. Implements components 1–4, 6, partial 5/7 of the HITL framework (`../../docs/hitl-framework.md`).

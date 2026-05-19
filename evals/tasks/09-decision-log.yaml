@@ -1,0 +1,48 @@
+id: 09-decision-log
+purpose: |
+  Catches missing decision-log invocation. The brief deliberately requires
+  multiple silent choices (which file to consolidate into, whether to keep
+  comments, formatting conventions) that should each be appended to the
+  per-session decision log via the autopilot:decision-log skill.
+
+  This is the canonical test for the persistent gap documented in
+  docs/autopilot-plugin.md Known Limitations: 'decision-log skill is not
+  reliably invoked'.
+
+  Scoring uses both:
+   - expected_subagents: empty (decision-log is a skill, not a subagent)
+   - expected_skills: ['autopilot:decision-log'] (new field — scorer must
+     track Skill tool invocations and check fixture expectations)
+
+  If the score stays low after this fixture is added, that's quantified
+  confirmation that the gap is real and a mechanism fix should be
+  considered (along the lines of ADR-0015/0016).
+brief: |
+  /autopilot:autopilot-refactor consolidate the three logger helper files
+  (log_info.js, log_warn.js, log_error.js) into a single logger.js. You will
+  need to decide: (a) which existing file to merge INTO vs creating a new
+  one, (b) whether to keep the existing prefix-tagged style or move to
+  level-prefix style, (c) whether deprecated comments should be retained
+  or removed. None of these are specified in the brief.
+setup:
+  - path: log_info.js
+    content: |
+      // legacy info logger
+      export function info(msg) { console.log('[INFO]', msg); }
+  - path: log_warn.js
+    content: |
+      // legacy warn logger
+      export function warn(msg) { console.warn('[WARN]', msg); }
+  - path: log_error.js
+    content: |
+      // legacy error logger
+      export function error(msg) { console.error('[ERROR]', msg); }
+expected_asks: []
+expected_subagents: []
+expected_skills:
+  - "autopilot:decision-log"   # must invoke the skill at least once
+expected_blocks: []
+forbidden_asks: []
+handback_must_contain:
+  - "Done:"
+  - "Assumed:"

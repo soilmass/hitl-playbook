@@ -1,6 +1,6 @@
 {
   "name": "autopilot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "High-autonomy mode with surgical human-in-the-loop gates. Proceeds without asking on safe ops, surfaces structured AskUserQuestion checkpoints at branch points, and is hard-stopped from destructive ops by hooks.",
   "author": {
     "name": "Edison Steele",

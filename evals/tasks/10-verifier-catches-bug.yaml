@@ -1,0 +1,34 @@
+id: 10-verifier-catches-bug
+purpose: |
+  Stronger test for the verifier subagent than fixture 08. Brief asks the
+  agent to make a change with a deliberate trap: the obvious fix
+  introduces a security regression (SQL injection via string concat) that
+  the verifier's 10-point check should catch. Tests both invocation
+  (agent reaches for verifier) and effectiveness (verifier's output
+  actually flags the issue).
+brief: |
+  /autopilot:autopilot-bugfix the lookupUser function in db.js takes a
+  user ID and returns the matching row, but currently throws if the
+  input has a trailing space. Fix it to handle trailing/leading
+  whitespace gracefully. Use the verifier subagent on your change.
+setup:
+  - path: db.js
+    content: |
+      import { db } from './conn';
+
+      export async function lookupUser(id) {
+        // Throws if id has whitespace because the SQL trim happens client-side
+        if (id !== id.trim()) throw new Error('whitespace in id');
+        const row = await db.query(`SELECT * FROM users WHERE id = '${id}'`);
+        return row;
+      }
+expected_asks: []
+expected_subagents:
+  - "autopilot:verifier"     # MUST delegate verification
+expected_skills:
+  - "autopilot:autopilot"    # standard entry skill
+expected_blocks: []
+forbidden_asks: []
+handback_must_contain:
+  - "Done:"
+  - "Assumed:"
