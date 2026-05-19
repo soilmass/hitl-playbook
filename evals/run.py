@@ -45,12 +45,22 @@ RESULTS_DIR = REPO_ROOT / "evals" / "results"
 # Driver — invoke claude --print, capture stream-json, parse to dict.
 # ============================================================================
 
+class FixtureSetupError(RuntimeError):
+    """Raised when a fixture's setup_commands fail. Per ADR-0017 PR-4,
+    setup failures are NOT confused with low scores — they're a
+    distinct SETUP_FAILED status surfaced in the results JSON."""
+
+
 def _setup_workspace(fixture: dict) -> Path:
     """
     Create an isolated cwd for one task run, seeded with any files
     declared in the fixture's optional `setup:` block (path+content pairs)
     and any shell commands in `setup_commands:` (run sequentially after
     files exist; used for `git init`, dependency install, etc.).
+
+    Setup commands run with check=True (per ADR-0017 PR-4) so silent
+    failures (e.g., git init not running) surface as FixtureSetupError
+    rather than corrupting downstream scoring with confused signal.
     """
     work_dir = Path(tempfile.mkdtemp(prefix=f"autopilot-eval-{fixture['id']}-"))
     for entry in fixture.get("setup", []) or []:
@@ -58,7 +68,16 @@ def _setup_workspace(fixture: dict) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(entry.get("content", ""))
     for cmd in fixture.get("setup_commands", []) or []:
-        subprocess.run(cmd, shell=True, cwd=work_dir, check=False, capture_output=True)
+        result = subprocess.run(
+            cmd, shell=True, cwd=work_dir, check=False, capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            raise FixtureSetupError(
+                f"fixture {fixture.get('id')} setup_command failed: {cmd!r}\n"
+                f"  exit={result.returncode}\n"
+                f"  stdout: {result.stdout.strip()[:300]}\n"
+                f"  stderr: {result.stderr.strip()[:300]}"
+            )
     return work_dir
 
 
@@ -71,6 +90,7 @@ def _run_claude_task(
     extra_setup_dir: Path = None,
     allowed_tools: list = None,
     fixture_env: dict = None,
+    no_plugin: bool = False,
 ) -> dict:
     """
     Run one task via `claude --print` and return the parsed transcript.
@@ -83,7 +103,6 @@ def _run_claude_task(
     work_dir = extra_setup_dir or Path(tempfile.mkdtemp(prefix="autopilot-eval-bare-"))
     cmd = [
         "claude", "--print",
-        "--plugin-dir", str(plugin_root),
         "--output-format", "stream-json",
         "--verbose",
         "--include-hook-events",
@@ -91,6 +110,14 @@ def _run_claude_task(
         "--model", model,
         "--permission-mode", "acceptEdits",
     ]
+    # --baseline-mode noplugin omits --plugin-dir so the run is "what
+    # would claude do without the autopilot plugin at all?" — the
+    # noise-floor reference per ADR-0017 PR-4. Per-criterion deltas
+    # whose CI crosses 0 between with-plugin and no-plugin indicate
+    # a non-discriminating fixture (it can't tell whether the plugin
+    # helps).
+    if not no_plugin:
+        cmd += ["--plugin-dir", str(plugin_root)]
     if allowed_tools:
         # --allowedTools is variadic (<tools...>) and slurps subsequent args
         # including the brief. Use `--` to terminate the option list.
@@ -409,6 +436,7 @@ def run_suite(
     use_judge: bool,
     keep_work_dirs: bool,
     filter_substr: str = None,
+    no_plugin: bool = False,
 ):
     judge = make_judge() if use_judge else None
     if use_judge and judge is None:
@@ -442,6 +470,7 @@ def run_suite(
                     extra_setup_dir=work,
                     allowed_tools=fixture.get("allowed_tools"),
                     fixture_env=fixture.get("env"),
+                    no_plugin=no_plugin,
                 )
                 score = score_task(fixture, transcript, judge)
                 score["cost_usd"] = round(transcript.get("cost_usd", 0.0), 4)
@@ -465,6 +494,9 @@ def run_suite(
                 print(f"  run {i+1}: composite={score['composite']:5.1f}{v2_str}  "
                       f"asks={score['asks']} tools={score['tools']} hook_blocks={score['hook_blocks']} "
                       f"cost=${score['cost_usd']:.4f} ({time.time()-t0:.1f}s)")
+            except FixtureSetupError as e:
+                per_run.append({"composite": None, "note": "SETUP_FAILED", "error": str(e)})
+                print(f"  run {i+1}: SETUP_FAILED — {str(e).splitlines()[0]}")
             except subprocess.TimeoutExpired:
                 per_run.append({"composite": None, "note": "timeout"})
                 print(f"  run {i+1}: TIMEOUT")
@@ -495,11 +527,14 @@ def main():
     ap.add_argument("--judge", action="store_true", help="use Sonnet judge for handback scoring")
     ap.add_argument("--keep-work-dirs", action="store_true", help="don't delete per-task tmpdirs")
     ap.add_argument("--filter", help="only run fixtures whose filename contains this substring (e.g. '02' or 'scope')")
+    ap.add_argument("--baseline-mode", choices=["with-plugin", "noplugin"], default="with-plugin",
+                    help="noplugin: omit --plugin-dir for the noise-floor reference baseline (ADR-0017 PR-4)")
     args = ap.parse_args()
     run_suite(
         args.version, Path(args.tasks), args.runs, Path(args.plugin_root),
         args.model, args.max_budget_usd, args.judge, args.keep_work_dirs,
         filter_substr=args.filter,
+        no_plugin=(args.baseline_mode == "noplugin"),
     )
 
 
