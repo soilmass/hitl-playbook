@@ -33,6 +33,10 @@ try:
 except ImportError:
     sys.exit("install pyyaml: pip install pyyaml")
 
+# v2 scorer (per ADR-0017) — dual-write alongside v1 composite.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scorer import criteria as crit_v2  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = REPO_ROOT / "evals" / "results"
 
@@ -413,9 +417,19 @@ def run_suite(
                 score["hook_blocks"] = transcript.get("hook_blocks", 0)
                 score["subagents"] = transcript.get("subagents_invoked", [])
                 score["skills"] = transcript.get("skills_invoked", [])
+
+                # v2 scorer — per-criterion binary checks (ADR-0017)
+                if fixture.get("criteria"):
+                    v2_results = crit_v2.score_v2(fixture, transcript)
+                    score["criteria_v2"] = v2_results
+                    score["criteria_v2_summary"] = crit_v2.summarize(v2_results)
+                    score["schema_version"] = 2
                 total_cost += score["cost_usd"]
                 per_run.append(score)
-                print(f"  run {i+1}: composite={score['composite']:5.1f}  "
+                v2_summary = score.get("criteria_v2_summary") or {}
+                v2_str = (f" v2={v2_summary['passed']}/{v2_summary['total']}"
+                          if v2_summary else "")
+                print(f"  run {i+1}: composite={score['composite']:5.1f}{v2_str}  "
                       f"asks={score['asks']} tools={score['tools']} hook_blocks={score['hook_blocks']} "
                       f"cost=${score['cost_usd']:.4f} ({time.time()-t0:.1f}s)")
             except subprocess.TimeoutExpired:
