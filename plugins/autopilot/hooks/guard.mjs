@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 
 const BUDGET_YELLOW = Number(process.env.AUTOPILOT_BUDGET_YELLOW) || 50;
 const BUDGET_RED = Number(process.env.AUTOPILOT_BUDGET_RED) || 150;
+const DLOG_THRESHOLD = Number(process.env.AUTOPILOT_DLOG_THRESHOLD) || 3;
 
 // Defang the hook environment: ignore caller's PATH and preload shims.
 process.env.PATH = '/usr/bin:/bin:/usr/local/bin';
@@ -195,6 +196,60 @@ function budgetPath(sessionId) {
   return join(projectDir, '.claude', 'autopilot-logs', `${sessionId}.budget`);
 }
 
+// Companion to budget tracking: counts writes/edits since the agent
+// last invoked the autopilot:decision-log skill. When the counter
+// crosses DLOG_THRESHOLD, the next Edit/Write gets an additionalContext
+// nudge. Counter resets when posttool-log sees a Skill call for
+// autopilot:decision-log.
+function dlogPath(sessionId) {
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  return join(projectDir, '.claude', 'autopilot-logs', `${sessionId}.dlog-writes`);
+}
+
+function readDlogWrites(sessionId) {
+  try { return Number(readFileSync(dlogPath(sessionId), 'utf8')) || 0; }
+  catch { return 0; }
+}
+
+function bumpDlogWrites(sessionId) {
+  try {
+    const p = dlogPath(sessionId);
+    mkdirSync(dirname(p), { recursive: true });
+    const next = readDlogWrites(sessionId) + 1;
+    writeFileSync(p, String(next));
+    return next;
+  } catch { return 0; }
+}
+
+function resetDlogWrites(sessionId) {
+  try { writeFileSync(dlogPath(sessionId), '0'); } catch {}
+}
+
+function checkDecisionLog(input) {
+  const toolName = input?.tool_name || '';
+  if (toolName !== 'Edit' && toolName !== 'Write') return;
+  const sessionId = sessionIdFrom(input);
+  const n = readDlogWrites(sessionId);
+  // Nudge ONCE when crossing the threshold (n === threshold).
+  // Don't repeat on subsequent writes to avoid spamming the agent.
+  if (n === DLOG_THRESHOLD) {
+    const payload = {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        additionalContext:
+          `AUTOPILOT DECISION-LOG NUDGE: ${n} Edit/Write calls since the ` +
+          `last autopilot:decision-log invocation. If any of those edits ` +
+          `involved a silent choice (which approach, what convention, ` +
+          `whether to keep something), invoke the Skill tool with ` +
+          `skill="autopilot:decision-log" before this write. Per the ` +
+          `autopilot skill, every yellow-tier-adjacent silent decision ` +
+          `must be logged contemporaneously, not reconstructed at handback.`,
+      },
+    };
+    process.stdout.write(JSON.stringify(payload));
+  }
+}
+
 function readBudget(sessionId) {
   try { return Number(readFileSync(budgetPath(sessionId), 'utf8')) || 0; }
   catch { return 0; }
@@ -289,6 +344,17 @@ function logToolUse(input) {
       n: bumpBudget(sessionId),
     };
     appendFileSync(logPath, JSON.stringify(entry) + '\n');
+
+    // Decision-log counter maintenance: track writes since last
+    // decision-log invocation. Reset on the skill being invoked;
+    // increment on Edit/Write. checkDecisionLog (PreToolUse) reads
+    // this counter and nudges at the threshold.
+    if (toolName === 'Skill') {
+      const skill = (input.tool_input?.skill || '');
+      if (skill.includes('decision-log')) resetDlogWrites(sessionId);
+    } else if (toolName === 'Edit' || toolName === 'Write') {
+      bumpDlogWrites(sessionId);
+    }
   } catch {
     // Logging must never block a hook; swallow errors silently.
   }
@@ -318,7 +384,7 @@ const stdinInput = (mode === 'session-start') ? {} : readStdin();
 switch (mode) {
   case 'pretool-bash':    checkBudget(stdinInput); checkBash(stdinInput); checkIrreversibleWarning(stdinInput); break;
   case 'pretool-write':   checkBudget(stdinInput); checkWrite(stdinInput); break;
-  case 'pretool-budget':  checkBudget(stdinInput); break;
+  case 'pretool-budget':  checkBudget(stdinInput); checkDecisionLog(stdinInput); break;
   case 'posttool-log':    logToolUse(stdinInput); break;
   case 'session-start':   sessionStart(); break;
   default:

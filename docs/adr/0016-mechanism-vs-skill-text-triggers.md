@@ -59,3 +59,19 @@ Constrains:
 - [ADR-0015](./0015-pretool-hook-stderr-invisibility.md) — the underlying mechanism (additionalContext stdout JSON, not stderr)
 - [ADR-0014](./0014-askuserquestion-print-mode-limitation.md) — caveat: in `--print` mode, even Class A nudges can't get real human responses; the eval measures intent only
 - [ADR-0006](./0006-hooks-as-sole-enforcement-layer.md) — hooks aren't security boundaries; same caveat applies here
+
+## Amendment — 2026-05-19 (v0.3.0)
+
+Empirical correction: the binary A/B distinction was too coarse. A third class exists, call it **Class A-hybrid**: triggers detectable via **aggregated tool-layer state**, not just single tool inputs.
+
+The decision-log gap is the exemplar. The trigger ("agent is making silent decisions and should log them") isn't tool-input-detectable on any single call. But it IS detectable by tracking state across calls: a counter of writes/edits since the last `autopilot:decision-log` Skill invocation. When that counter crosses a threshold, the hook injects an `additionalContext` nudge — same mechanism, different signal.
+
+Empirical: fixture 09 went from 0 invocations across all prior baselines to 3/3 invocations with composite 100/100/100 after the state-tracked nudge landed.
+
+**Revised classification:**
+
+- **Class A (single-tool-input detectable):** `budget_tick`, `irreversibility` for `git commit/push`, `external_effect` for known endpoints, `scope_drift` via path patterns.
+- **Class A-hybrid (aggregated-state detectable):** `decision-log` (state: writes since last skill invocation). Future candidates: "agent has been Reading without Editing for N calls → probably needs to ask before the next non-trivial change."
+- **Class B (brief-content only, no state signal):** `architectural_choice`, `ambiguity`. These remain skill-text-only and bimodal.
+
+The decision rule for new triggers stays the same — Class A and Class A-hybrid both get mechanism nudges; Class B accepts skill-text limits.

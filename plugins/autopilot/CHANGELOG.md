@@ -2,6 +2,60 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/) — see "Versioning policy" below.
 
+## [0.3.0] - 2026-05-19
+
+### Added — Behavior
+
+- **Behavior:** `autopilot:decision-log` skill is now reliably invoked
+  via state-tracked PreToolUse nudge. Mechanism: `guard.mjs` maintains
+  a per-session `<id>.dlog-writes` counter that increments on Edit/Write
+  and resets when posttool-log observes a `Skill` call for
+  `autopilot:decision-log`. At threshold (default 3, env-overridable
+  via `AUTOPILOT_DLOG_THRESHOLD`), the next Edit/Write gets an
+  `additionalContext` nudge instructing the agent to invoke the skill
+  before proceeding. Empirical: fixture 09 (decision-log) went from
+  0 invocations across all baselines to **3/3 invocations** with
+  composite **100/100/100**. Was previously documented as a persistent
+  Class B gap; the state-tracked-at-tool-layer pattern reclassifies it
+  as a hybrid Class A trigger — see updated ADR-0016.
+
+### Added — Hook
+
+- New `DLOG_THRESHOLD` constant and `checkDecisionLog` function in
+  `guard.mjs`. Wired into the existing `pretool-budget` mode (matcher
+  `""` — fires on every tool call). Non-blocking (warning only, agent
+  retains autonomy).
+
+### Added — Fixtures
+
+- `evals/tasks/10-verifier-catches-bug.yaml` — sharper test for the
+  verifier subagent with a deliberate SQL-injection trap.
+
+### Changed — Documentation
+
+- `docs/autopilot-plugin.md` Known Limitations: removed
+  "decision-log skill is not reliably invoked" — the mechanism fix
+  resolves it (verified empirically at v0.3.0).
+- ADR-0016 amended: the binary Class A / Class B distinction admits
+  a hybrid third class where triggers can be detected via *aggregated
+  tool-layer state*, not just single tool inputs. Decision-log is the
+  exemplar (writes-since-last-skill counter).
+
+### Behavior — what shifted (preliminary; full baseline at next release)
+
+`Sonnet single-task probe scores (3 runs):`
+- 09-decision-log: **NEW MECHANISM** → 100, 100, 100 (was 0 invocations in all prior baselines)
+
+### Documented limitations (now smaller)
+
+- `architectural_choice` and `ambiguity` triggers cap around 33-50 mean
+  on Sonnet; brief-content-only triggers without any tool-layer state
+  signal remain not-mechanism-enforceable. These are the only two
+  triggers without a mechanism path now.
+- All other limitations from 0.2.0 still apply.
+
+---
+
 ## [0.2.0] - 2026-05-19
 
 Eval-driven iteration cycle following the 0.1.0 ship. All changes below
