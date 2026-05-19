@@ -35,19 +35,30 @@ RESULTS_DIR = REPO_ROOT / "evals" / "results"
 
 def collect_criteria(result: dict) -> dict:
     """
-    Reshape result JSON into: {fixture_id: {criterion_id: [bool per run]}}.
+    Reshape result JSON into: {fixture_id: {criterion_id: [(passed, skipped) per run]}}.
     Only includes fixtures+criteria present in this result.
     """
-    out: dict[str, dict[str, list[bool]]] = {}
+    out: dict[str, dict[str, list[tuple[bool, bool]]]] = {}
     for fid, runs in result.get("tasks", {}).items():
-        per_crit: dict[str, list[bool]] = {}
+        per_crit: dict[str, list[tuple[bool, bool]]] = {}
         for r in runs:
             c2 = r.get("criteria_v2", {})
             for cid, info in c2.items():
-                per_crit.setdefault(cid, []).append(bool(info.get("passed")))
+                per_crit.setdefault(cid, []).append(
+                    (bool(info.get("passed")), bool(info.get("skipped")))
+                )
         if per_crit:
             out[fid] = per_crit
     return out
+
+
+def _applicable_passes(records: list[tuple[bool, bool]]) -> list[bool]:
+    """Extract pass-rate booleans excluding skipped runs."""
+    return [p for (p, sk) in records if not sk]
+
+
+def _skipped_count(records: list[tuple[bool, bool]]) -> int:
+    return sum(1 for (_, sk) in records if sk)
 
 
 def diff_v2(baseline: dict, candidate: dict) -> int:
@@ -72,10 +83,20 @@ def diff_v2(baseline: dict, candidate: dict) -> int:
             continue
         print(f"\n  {fid}")
         for cid in all_crit:
-            b_runs = b_run.get(cid, [])
-            c_runs = c_run.get(cid, [])
+            b_records = b_run.get(cid, [])
+            c_records = c_run.get(cid, [])
+            b_runs = _applicable_passes(b_records)
+            c_runs = _applicable_passes(c_records)
+            b_skipped = _skipped_count(b_records)
+            c_skipped = _skipped_count(c_records)
             b_rate = sum(b_runs) / len(b_runs) if b_runs else None
             c_rate = sum(c_runs) / len(c_runs) if c_runs else None
+            # If both sides are entirely skipped, the criterion isn't
+            # discriminating in this comparison; show 'n/a' instead of
+            # forcing a 0=0 stable verdict.
+            if not b_runs and not c_runs:
+                print(f"    · {cid:<42}   n/a (skipped both sides: {b_skipped}/{c_skipped})")
+                continue
             boot = paired_bootstrap_delta(b_runs, c_runs)
             verdict = "stable"
             mark = "·"
@@ -93,7 +114,10 @@ def diff_v2(baseline: dict, candidate: dict) -> int:
             noisy = "  ⚠NOISY" if (v_b["noisy"] or v_c["noisy"]) else ""
             br = f"{b_rate:.2f}" if b_rate is not None else " - "
             cr = f"{c_rate:.2f}" if c_rate is not None else " - "
-            print(f"    {mark} {cid:<42}  {br}→{cr}  {verdict}{noisy}")
+            skip = ""
+            if b_skipped or c_skipped:
+                skip = f"  (skipped {b_skipped}/{c_skipped})"
+            print(f"    {mark} {cid:<42}  {br}→{cr}  {verdict}{noisy}{skip}")
             if boot["regressed"]:
                 # Find target_artifact in the candidate transcript
                 for tid_runs in candidate.get("tasks", {}).get(fid, []):

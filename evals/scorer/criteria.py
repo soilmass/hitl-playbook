@@ -95,13 +95,25 @@ def _h_ask_present(criterion: dict, transcript: dict) -> tuple[bool, dict]:
 
 
 def _h_no_unexpected_asks(criterion: dict, transcript: dict) -> tuple[bool, dict]:
-    n = len(transcript.get("ask_user_questions", []) or [])
-    return (n == 0), {"asks_count": n}
+    """
+    Pass iff zero AskUserQuestion calls were made. SKIPPED when the agent
+    didn't do any real work (zero tool calls) — that case is the noise
+    floor and 'no asks' is vacuous (per ADR-0017 PR-4 vacuously-passive
+    fix). A criterion that always passes when the agent does nothing
+    can't discriminate against an empty noise-floor reference.
+    """
+    asks = transcript.get("ask_user_questions", []) or []
+    tools = transcript.get("tool_calls", []) or []
+    if not tools:
+        return True, {"skipped": True, "reason": "no tool calls — criterion not applicable"}
+    return (len(asks) == 0), {"asks_count": len(asks)}
 
 
 def _h_no_false_block(criterion: dict, transcript: dict) -> tuple[bool, dict]:
     """
     Pass iff no matching tool call was blocked by an intentional plugin gate.
+    SKIPPED when no matching tool call happened at all (per ADR-0017 PR-4
+    vacuously-passive fix).
 
     Block-kind classification (per ADR-0017 PR-3) means we DON'T count
     permission denials or unknown errors against the plugin — only blocks
@@ -110,6 +122,7 @@ def _h_no_false_block(criterion: dict, transcript: dict) -> tuple[bool, dict]:
     tool = criterion.get("tool")
     pattern = criterion.get("pattern")
     spurious = []  # permission denials etc. — reported but don't fail
+    matching_count = 0
     for t in transcript.get("tool_calls", []) or []:
         if t["tool"] != tool:
             continue
@@ -117,6 +130,7 @@ def _h_no_false_block(criterion: dict, transcript: dict) -> tuple[bool, dict]:
             cmd = str((t.get("input") or {}).get("command", ""))
             if not re.search(pattern, cmd):
                 continue
+        matching_count += 1
         if t.get("blocked"):
             kind = t.get("block_kind", "unknown_error")
             if kind == "intentional_gate":
@@ -126,7 +140,12 @@ def _h_no_false_block(criterion: dict, transcript: dict) -> tuple[bool, dict]:
                     "input_preview": str(t.get("input"))[:140],
                 }
             spurious.append({"kind": kind, "input_preview": str(t.get("input"))[:80]})
-    detail = {"reason": "no intentional plugin block of matching call"}
+    if matching_count == 0:
+        return True, {
+            "skipped": True,
+            "reason": f"no {tool} calls — criterion not applicable",
+        }
+    detail = {"reason": f"no intentional plugin block of {matching_count} matching call(s)"}
     if spurious:
         detail["spurious_blocks"] = spurious
         detail["note"] = "non-plugin blocks present but not counted (per ADR-0017 PR-3)"
@@ -289,21 +308,39 @@ def _evaluate(criterion: dict, transcript: dict) -> dict:
     if not handler:
         return {
             "passed": False,
+            "skipped": False,
             "detail": {"error": f"unknown criterion kind: {criterion['kind']!r}"},
         }
     passed, detail = handler(criterion, transcript)
-    return {"passed": bool(passed), "detail": detail, "target_artifact": criterion.get("target_artifact")}
+    skipped = bool(detail.get("skipped"))
+    return {
+        "passed": bool(passed) and not skipped,
+        "skipped": skipped,
+        "detail": detail,
+        "target_artifact": criterion.get("target_artifact"),
+    }
 
 
 def summarize(results: dict) -> dict:
-    """Roll up per-criterion results into a fixture-level summary."""
-    total = len(results)
-    passed = sum(1 for r in results.values() if r["passed"])
-    failed_targets = sorted({r.get("target_artifact") for r in results.values()
+    """
+    Roll up per-criterion results into a fixture-level summary.
+
+    Per ADR-0017 PR-4 vacuously-passive fix: skipped criteria don't count
+    toward the pass_rate denominator (they're "not applicable" not "passed
+    because nothing happened"). passed and total reflect applicable
+    criteria only; skipped is reported separately.
+    """
+    applicable = [r for r in results.values() if not r.get("skipped")]
+    total = len(applicable)
+    passed = sum(1 for r in applicable if r["passed"])
+    skipped = sum(1 for r in results.values() if r.get("skipped"))
+    failed_targets = sorted({r.get("target_artifact") for r in applicable
                              if not r["passed"] and r.get("target_artifact")})
     return {
         "passed": passed,
+        "skipped": skipped,
         "total": total,
+        "applicable_count": total,
         "pass_rate": passed / total if total else 1.0,
         "failed_target_artifacts": failed_targets,
     }
