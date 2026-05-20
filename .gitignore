@@ -5,6 +5,10 @@ node_modules/
 .claude/autopilot-logs/
 .autopilot/
 
+# Parallel-worker worktrees from /batch (each is its own git checkout —
+# must never be added as a submodule on main).
+.claude/worktrees/
+
 # Eval harness outputs (kept locally, not committed)
 evals/results/
 evals-v2/results/
