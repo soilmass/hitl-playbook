@@ -56,3 +56,34 @@ Constrains:
 Same dogfood pass also surfaced:
 - The `Skill` tool returns `is_error: true` when invoked, but the agent's response often appears successful — investigation needed to know whether the skill content actually loaded.
 - The agent in `--print` mode can talk itself out of architectural-fork triggers ("the brief is a clear directive") even when the skill text explicitly warns against this rationalization. Likely related to the lack of a real ask-and-wait surface — there's no cost to skipping the ask.
+
+## Confirming evidence 2026-05-19
+
+The first v2 canonical baseline (commit `2a3566a`, plugin v1.0.0-alpha.1,
+Sonnet, n=5 across 7 fixtures, $5.14) recorded `asked_on_irreversibility`
+at **1/5 (20%)** on `02-irreversibility`. v1's published baseline put the
+same trigger at ~75% — but v1's number almost certainly came from
+interactive runs, while v2's number is `claude --print` end-to-end.
+
+This is exactly the limitation documented above, now quantified:
+- The agent *does* attempt `AskUserQuestion` some of the time (1/5),
+  proving the trigger can fire even in `--print` mode.
+- The 4/5 misses are likely a combination of (a) the agent rationalizing
+  past the trigger because there's no real ask-and-wait cost (final
+  bullet in "Related findings"), and (b) the trigger itself being a
+  skill-text-only mechanism that caps at the rates documented in
+  ADR-0016.
+
+**The 20% is the honest `--print`-mode floor for both v1 and v2.** Do not
+read it as a regression vs v1's 75%; they are measuring different
+execution modes of the same plugin. The v2 eval harness was built
+specifically to measure the `--print` mode behavior the eval-side actually
+observes (see `evals-v2/run.py` `_parse_stream_json` and
+`evals-v2/scorer/criteria.py` `_h_ask_present` — both capture the
+attempted tool_use regardless of subsequent `is_error` results).
+
+ADR-0018 records the v3 scope decision: stop iterating on skill-text to
+chase ask-rates in `--print` mode. The cap is structural, not textual.
+The `02-irreversibility` and `04-budget-tick` fixture docstrings now
+spell this out so future fixture authors don't try to "fix" a 20% number
+that is already as good as it gets without changing the execution mode.
