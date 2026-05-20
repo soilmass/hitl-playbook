@@ -13,6 +13,6 @@
   },
   "action": "nudge",
   "checkpoint_template_id": "budget-tick",
-  "advisory_text": "Tool-call budget at or near the yellow threshold. Per autopilot:checkpoint-format, surface a budget AskUserQuestion offering: extend budget by N, hand back now, or continue without ticking again.",
+  "advisory_text": "Tool-call budget at or near the yellow threshold. You MUST surface a budget AskUserQuestion BEFORE running another tool, using the autopilot-v2:checkpoint-format template. Options: extend budget by N, hand back now, or continue without ticking again.",
   "fixture_id": "03-budget-tick"
 }

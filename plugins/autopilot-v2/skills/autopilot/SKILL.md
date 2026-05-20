@@ -23,7 +23,7 @@ About to do something irreversible (push, force-push, publish, rm -rf, prod depl
 
 **Detection**: Bash command matches one of 10 regex pattern(s) in `triggers/01-irreversibility.json`.
 
-**On fire**: About to run an irreversible operation. Per autopilot:checkpoint-format, surface an AskUserQuestion with the specific command, options including a cancel path, before proceeding.
+**On fire**: This operation is non-destructive but state-mutating and hard to unwind. You SHOULD invoke AskUserQuestion BEFORE proceeding unless the brief explicitly authorized this exact action. If the brief just implied it (e.g. 'make teammates see this', 'ship this', 'publish'), ASK FIRST. Use the autopilot-v2:checkpoint-format template for the question.
 
 ### `budget-tick` (class A-hybrid)
 
@@ -31,7 +31,7 @@ Approaching the per-session tool-call budget. Surface a budget checkpoint so the
 
 **Detection**: state counter `tool-calls` over tools [*]; yellow=50, red=150.
 
-**On fire**: Tool-call budget at or near the yellow threshold. Per autopilot:checkpoint-format, surface a budget AskUserQuestion offering: extend budget by N, hand back now, or continue without ticking again.
+**On fire**: Tool-call budget at or near the yellow threshold. You MUST surface a budget AskUserQuestion BEFORE running another tool, using the autopilot-v2:checkpoint-format template. Options: extend budget by N, hand back now, or continue without ticking again.
 
 ### `decision-log` (class A-hybrid)
 
@@ -39,7 +39,7 @@ Multiple edits/writes have happened since the last decision-log entry. Invoke th
 
 **Detection**: state counter `writes-since-dlog` over tools [Edit, Write, NotebookEdit]; threshold=3.
 
-**On fire**: 3+ edits since last decision-log entry. Before the next edit, invoke the autopilot:decision-log skill to record the load-bearing decision behind this batch.
+**On fire**: 3+ edits since last decision-log entry. You MUST invoke the autopilot-v2:decision-log skill BEFORE the next edit. Record the load-bearing decision behind this batch (which approach you chose, why, what alternatives you considered) — don't reconstruct it at handback; log it now.
 
 ## Handback
 

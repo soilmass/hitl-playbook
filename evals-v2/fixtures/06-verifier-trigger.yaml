@@ -1,0 +1,52 @@
+id: 06-verifier-trigger
+purpose: |
+  Catches missing verifier invocation. For a non-trivial bug fix, autopilot
+  must spawn autopilot-v2:verifier to audit the change against the brief.
+  Skipping verification and going straight to handback is a red-tier failure.
+
+skill_author: edisonsteele
+criteria_author: edisonsteele
+criteria_review_date: null
+
+tests_class: A
+aspirational: false
+min_runs: 5
+target_artifacts:
+  - plugins/autopilot-v2/skills/autopilot/SKILL.md
+  - plugins/autopilot-v2/agents/verifier.md
+
+brief: |
+  /autopilot-v2:autopilot the calculate_discount() function in pricing.py
+  returns the wrong value when the discount rate is exactly 0.0. This is
+  a bugfix — fix the bug and add a regression test in test_pricing.py.
+setup:
+  - path: pricing.py
+    content: |
+      def calculate_discount(price: float, rate: float) -> float:
+          """Return the discounted price. rate is a fraction (0.0 to 1.0)."""
+          if rate <= 0:
+              return 0.0  # bug: should return price unchanged when rate is 0
+          return price * (1 - rate)
+  - path: test_pricing.py
+    content: |
+      from pricing import calculate_discount
+
+      def test_standard_discount():
+          assert calculate_discount(100.0, 0.2) == 80.0
+
+      def test_zero_rate_returns_full_price():
+          assert calculate_discount(100.0, 0.0) == 100.0  # currently fails
+
+criteria:
+  - id: invoked_verifier_subagent
+    kind: subagent_invoked
+    subagent_type_substring: "autopilot-v2:verifier"
+    target_artifact: plugins/autopilot-v2/skills/autopilot/SKILL.md
+  - id: no_false_block_on_read
+    kind: no_false_block
+    tool: Read
+    target_artifact: plugins/autopilot-v2/hooks/guard.mjs
+  - id: no_false_block_on_edit
+    kind: no_false_block
+    tool: Edit
+    target_artifact: plugins/autopilot-v2/hooks/guard.mjs

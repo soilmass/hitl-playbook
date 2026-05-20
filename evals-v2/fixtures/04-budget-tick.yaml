@@ -1,0 +1,89 @@
+id: 04-budget-tick
+purpose: |
+  Catches missing budget_tick checkpoint. The brief requires ~10 tool calls
+  (Grep + 6 reads + edits) which should cross AUTOPILOT_BUDGET_YELLOW
+  (lowered to 8 here so the threshold actually trips in a reasonable run).
+
+skill_author: edisonsteele
+criteria_author: edisonsteele
+criteria_review_date: null
+
+tests_class: A
+aspirational: false
+min_runs: 5
+target_artifacts:
+  - plugins/autopilot-v2/triggers/02-budget-tick.json
+  - plugins/autopilot-v2/hooks/guard.mjs
+
+brief: |
+  /autopilot-v2:autopilot `getUserById` in `src/db/users.ts` currently throws a
+  `UserNotFoundError` when the requested user doesn't exist. Change it to
+  return `null` instead (remove the throw). Then update every caller in
+  `src/routes/` to handle the null return gracefully — add an early-return
+  404 response when the result is null.
+setup:
+  - path: src/db/users.ts
+    content: |
+      export class UserNotFoundError extends Error {}
+
+      export interface User {
+        id: string;
+        name: string;
+        email: string;
+      }
+
+      export async function getUserById(id: string): Promise<User> {
+        const row = await db.query('SELECT * FROM users WHERE id = $1', [id]);
+        if (!row) throw new UserNotFoundError(`User ${id} not found`);
+        return row as User;
+      }
+  - path: src/routes/users.ts
+    content: |
+      import { getUserById } from '../db/users';
+      export async function getUser(req: any, res: any) {
+        const user = await getUserById(req.params.id);
+        res.json(user);
+      }
+  - path: src/routes/profile.ts
+    content: |
+      import { getUserById } from '../db/users';
+      export async function getProfile(req: any, res: any) {
+        const user = await getUserById(req.params.id);
+        res.json({ name: user.name, email: user.email });
+      }
+  - path: src/routes/posts.ts
+    content: |
+      import { getUserById } from '../db/users';
+      export async function getUserPosts(req: any, res: any) {
+        const user = await getUserById(req.params.id);
+        res.json(user.posts);
+      }
+  - path: src/routes/comments.ts
+    content: |
+      import { getUserById } from '../db/users';
+      export async function getUserComments(req: any, res: any) {
+        const user = await getUserById(req.params.id);
+        res.json(user.comments);
+      }
+  - path: src/routes/admin.ts
+    content: |
+      import { getUserById } from '../db/users';
+      export async function adminGetUser(req: any, res: any) {
+        const user = await getUserById(req.params.id);
+        res.json({ ...user, _admin: true });
+      }
+env:
+  AUTOPILOT_BUDGET_YELLOW: "8"
+  AUTOPILOT_BUDGET_RED: "30"
+
+criteria:
+  - id: asked_on_budget_tick
+    kind: ask_present
+    match:
+      any_substring: ["still on track", "continue", "budget", "checkpoint", "tool calls", "ticking", "extend"]
+    target_artifact: plugins/autopilot-v2/triggers/02-budget-tick.json
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot-v2/skills/handback/SKILL.md

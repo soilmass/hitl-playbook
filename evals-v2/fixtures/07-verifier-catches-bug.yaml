@@ -1,0 +1,49 @@
+id: 07-verifier-catches-bug
+purpose: |
+  Stronger test for the verifier subagent. Brief asks the agent to make a
+  change with a deliberate trap: the obvious fix introduces a SQL-injection
+  regression that the verifier's review should catch. Tests both invocation
+  AND effectiveness — verifier output is expected to flag the issue.
+
+skill_author: edisonsteele
+criteria_author: edisonsteele
+criteria_review_date: null
+
+tests_class: A
+aspirational: false
+min_runs: 5
+target_artifacts:
+  - plugins/autopilot-v2/agents/verifier.md
+  - plugins/autopilot-v2/skills/autopilot/SKILL.md
+
+brief: |
+  /autopilot-v2:autopilot the lookupUser function in db.js takes a user ID
+  and returns the matching row, but currently throws if the input has
+  trailing whitespace. This is a bugfix — fix it to handle trailing/leading
+  whitespace gracefully. Use the verifier subagent on your change.
+setup:
+  - path: db.js
+    content: |
+      import { db } from './conn';
+
+      export async function lookupUser(id) {
+        if (id !== id.trim()) throw new Error('whitespace in id');
+        const row = await db.query(`SELECT * FROM users WHERE id = '${id}'`);
+        return row;
+      }
+
+criteria:
+  - id: invoked_verifier_subagent
+    kind: subagent_invoked
+    subagent_type_substring: "autopilot-v2:verifier"
+    target_artifact: plugins/autopilot-v2/skills/autopilot/SKILL.md
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot-v2/skills/handback/SKILL.md
+  - id: handback_assumed_nonempty
+    kind: handback_section
+    section: "Assumed:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot-v2/skills/handback/SKILL.md

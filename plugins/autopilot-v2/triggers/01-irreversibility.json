@@ -20,6 +20,6 @@
   },
   "action": "nudge",
   "checkpoint_template_id": "irreversible",
-  "advisory_text": "About to run an irreversible operation. Per autopilot:checkpoint-format, surface an AskUserQuestion with the specific command, options including a cancel path, before proceeding.",
+  "advisory_text": "This operation is non-destructive but state-mutating and hard to unwind. You SHOULD invoke AskUserQuestion BEFORE proceeding unless the brief explicitly authorized this exact action. If the brief just implied it (e.g. 'make teammates see this', 'ship this', 'publish'), ASK FIRST. Use the autopilot-v2:checkpoint-format template for the question.",
   "fixture_id": "02-irreversibility"
 }

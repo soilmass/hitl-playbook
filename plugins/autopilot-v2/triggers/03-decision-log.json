@@ -8,13 +8,13 @@
     "counter": "writes-since-dlog",
     "reset_on": {
       "tool": "Skill",
-      "skill_substring": "autopilot:decision-log"
+      "skill_substring": "autopilot-v2:decision-log"
     },
     "threshold": 3,
     "threshold_env_override": "AUTOPILOT_DLOG_THRESHOLD"
   },
   "action": "nudge",
   "checkpoint_template_id": null,
-  "advisory_text": "3+ edits since last decision-log entry. Before the next edit, invoke the autopilot:decision-log skill to record the load-bearing decision behind this batch.",
+  "advisory_text": "3+ edits since last decision-log entry. You MUST invoke the autopilot-v2:decision-log skill BEFORE the next edit. Record the load-bearing decision behind this batch (which approach you chose, why, what alternatives you considered) — don't reconstruct it at handback; log it now.",
   "fixture_id": "04-decision-log"
 }

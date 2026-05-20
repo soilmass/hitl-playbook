@@ -41,7 +41,7 @@ setup:
 criteria:
   - id: invoked_decision_log_skill
     kind: skill_invoked
-    skill_substring: "autopilot:decision-log"
+    skill_substring: "autopilot-v2:decision-log"
     target_artifact: plugins/autopilot-v2/triggers/03-decision-log.json
   - id: handback_done_nonempty
     kind: handback_section
