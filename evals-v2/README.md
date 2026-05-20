@@ -76,11 +76,19 @@ fixture criteria, and surfaces real bugs v1 never had a chance to expose:
    17-19 tool calls (well over the yellow=8 threshold). Either the env
    override isn't reaching `guard.mjs`, or the hook isn't running on
    every tool call. Needs investigation, not text changes.
-3. **Stronger advisory text didn't help irreversibility**: 1/5 ask rate
-   (was 1/5 in the first 3-fixture run). Text-strengthening alone isn't
-   enough. ADR-0014 (`--print` mode) is a candidate explanation.
-
-## v2 acceptance for the canonical baseline
+3. **ADR-0014 limitation confirmed on irreversibility — not a regression;
+   this is the floor.** 1/5 ask rate (was 1/5 in the first 3-fixture
+   run). v1's published 75% on the same trigger was almost certainly
+   from interactive runs; v2 measures `claude --print` end-to-end where
+   `AskUserQuestion` is structurally non-functional. The 20% is the
+   honest `--print`-mode rate for both v1 and v2 — same plugin
+   behavior, different execution mode. The eval scorer correctly
+   captures the *attempted* ask (the tool_use event with matching
+   `question_text`) regardless of the subsequent `is_error` tool_result,
+   so this is a real measurement of trigger-firing, not a measurement
+   artifact. See ADR-0014's "Confirming evidence 2026-05-19" section
+   and ADR-0018 for the v3 scope decision (stop iterating skill-text
+   to chase this number).
 
 ## v2 acceptance for the canonical baseline
 
