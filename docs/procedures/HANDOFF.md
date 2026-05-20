@@ -151,11 +151,18 @@ No re-baseline needed — pure documentation. The procedure being written CODIFI
 ## Session context at handoff
 
 - Branch: `main`
-- Last commit: `e407bcb` v3 unit 2: JSONSchema validation for triggers registry (#5)
+- Last commit: `1655be0` Fix: remove worktree gitlinks from main; ignore .claude/worktrees/
+- Prior commits: `c955caa` (this handoff), `e407bcb` v3 unit 2 (#5)
 - All 5 v3 hardening PRs merged
 - v3 post-hardening canonical baseline run: `evals-v2/results/v2-canonical-post-v3-hardening-1779299739.json` (gitignored — don't commit; reference its NUMBERS not the file)
-- This handoff is the only file uncommitted in `docs/procedures/`
 - Existing worktrees `.claude/worktrees/agent-*` from today's parallel batch are still on disk; safe to delete since their PRs all merged (or keep for forensics)
+
+## Failure modes already observed (add to 02-build.md when written)
+
+This handoff's own commit shipped a real bug worth documenting in `02-build.md`:
+
+- **`git add -A` from main when worktrees exist underneath** → adds each worktree as a submodule gitlink (mode 160000). Caught on push by the embedded-repository warnings. Fixed in `1655be0` (`git rm --cached` + add `.claude/worktrees/` to `.gitignore`).
+- **Lesson:** after `/batch` runs, either commit specific paths instead of `-A`, OR ensure `.claude/worktrees/` is in `.gitignore` before any commit. The autoditor wouldn't catch this — `auditor.py` reads the staged diff via `git diff`, which doesn't flag gitlink additions the same way `git push` does. This is a place where the `git status` line-item check during commit prep is load-bearing and self-review missed it.
 
 ## Picking up later
 
