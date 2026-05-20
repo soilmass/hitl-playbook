@@ -276,7 +276,11 @@ function bumpBudget(sessionId) {
 }
 
 function checkBudget(input) {
-  const n = readBudget(sessionIdFrom(input));
+  // Bump-then-check: the threshold uses strict equality (n === YELLOW),
+  // so the counter must reflect the current tool call before the test or
+  // the yellow window is skipped. pretool-budget (matcher "") runs once
+  // per tool call, so this is the single authoritative bump site.
+  const n = bumpBudget(sessionIdFrom(input));
   if (n >= BUDGET_RED) {
     block(`budget exceeded (${n} tool calls; red threshold ${BUDGET_RED}). Hand back to human; do not continue.`);
   }
@@ -338,7 +342,7 @@ function logToolUse(input) {
       tool: toolName,
       input: redact(summarizeInput(toolName, input.tool_input)),
       ok: input.tool_response?.is_error ? false : true,
-      n: bumpBudget(sessionId),
+      n: readBudget(sessionId),
     };
     appendFileSync(logPath, JSON.stringify(entry) + '\n');
 
@@ -379,8 +383,8 @@ function sessionStart() {
 const stdinInput = (mode === 'session-start') ? {} : readStdin();
 
 switch (mode) {
-  case 'pretool-bash':    checkBudget(stdinInput); checkBash(stdinInput); checkBashYellowTriggers(stdinInput); break;
-  case 'pretool-write':   checkBudget(stdinInput); checkWrite(stdinInput); break;
+  case 'pretool-bash':    checkBash(stdinInput); checkBashYellowTriggers(stdinInput); break;
+  case 'pretool-write':   checkWrite(stdinInput); break;
   case 'pretool-budget':  checkBudget(stdinInput); checkDecisionLog(stdinInput); break;
   case 'posttool-log':    logToolUse(stdinInput); break;
   case 'session-start':   sessionStart(); break;
