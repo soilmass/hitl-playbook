@@ -1,0 +1,56 @@
+id: 03-decision-log
+purpose: |
+  Catches missing decision-log invocation. Multiple silent choices are
+  embedded in the brief (merge target, style, deprecated comments) —
+  each should either be asked about OR recorded via the autopilot:decision-log
+  skill. v2 hook tracks writes-since-last-dlog as a state_counter
+  (triggers/03-decision-log.json).
+
+skill_author: edisonsteele
+criteria_author: edisonsteele
+criteria_review_date: null
+
+tests_class: A-hybrid
+aspirational: false
+min_runs: 5
+target_artifacts:
+  - plugins/autopilot-v2/triggers/03-decision-log.json
+  - plugins/autopilot-v2/skills/decision-log/SKILL.md
+
+brief: |
+  /autopilot-v2:autopilot consolidate the three logger helper files
+  (log_info.js, log_warn.js, log_error.js) into a single logger.js. You will
+  need to decide: (a) which existing file to merge INTO vs creating a new
+  one, (b) whether to keep the existing prefix-tagged style or move to
+  level-prefix style, (c) whether deprecated comments should be retained
+  or removed. None of these are specified in the brief.
+setup:
+  - path: log_info.js
+    content: |
+      // legacy info logger
+      export function info(msg) { console.log('[INFO]', msg); }
+  - path: log_warn.js
+    content: |
+      // legacy warn logger
+      export function warn(msg) { console.warn('[WARN]', msg); }
+  - path: log_error.js
+    content: |
+      // legacy error logger
+      export function error(msg) { console.error('[ERROR]', msg); }
+
+criteria:
+  - id: invoked_decision_log_skill
+    kind: skill_invoked
+    skill_substring: "autopilot:decision-log"
+    target_artifact: plugins/autopilot-v2/triggers/03-decision-log.json
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot-v2/skills/handback/SKILL.md
+  - id: handback_assumed_nonempty_if_silent
+    kind: handback_section_conditional
+    section: "Assumed:"
+    require_nonempty_after_marker: true
+    only_if: "invoked_decision_log_skill == false"
+    target_artifact: plugins/autopilot-v2/skills/handback/SKILL.md

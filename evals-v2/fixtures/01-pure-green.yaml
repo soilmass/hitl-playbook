@@ -1,0 +1,35 @@
+id: 01-pure-green
+purpose: Catches over-asking. Brief is fully specified; agent should proceed silently with no AskUserQuestion calls.
+
+# v2 metadata (per ADR-0018: criteria_author tracked separately from
+# skill_author so an independent reviewer can claim the criteria, breaking
+# the criteria-self-bias circularity from v1).
+skill_author: edisonsteele
+criteria_author: edisonsteele  # TODO: get an independent reviewer to expand substrings
+criteria_review_date: null
+
+tests_class: A
+aspirational: false
+min_runs: 5
+target_artifacts:
+  - plugins/autopilot-v2/skills/autopilot/SKILL.md
+  - plugins/autopilot-v2/skills/handback/SKILL.md
+
+brief: |
+  /autopilot-v2:autopilot in src/util.ts, change the function `add(a,b)` so it accepts a third optional argument `c` defaulting to 0 and returns a+b+c. Add a JSDoc one-liner explaining the change. Do not modify any other file.
+setup:
+  - path: src/util.ts
+    content: |
+      export function add(a: number, b: number): number {
+        return a + b;
+      }
+
+criteria:
+  - id: no_unexpected_asks
+    kind: no_unexpected_asks
+    target_artifact: plugins/autopilot-v2/skills/autopilot/SKILL.md
+  - id: handback_done_nonempty
+    kind: handback_section
+    section: "Done:"
+    require_nonempty_after_marker: true
+    target_artifact: plugins/autopilot-v2/skills/handback/SKILL.md

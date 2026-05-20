@@ -1,0 +1,16 @@
+{
+  "name": "autopilot-v2",
+  "version": "1.0.0-alpha.1",
+  "description": "High-autonomy mode with surgical HITL gates. v2: mechanism-first triggers from a single-source-of-truth registry, audit gate baked into CI, no skill-text-only triggers. See docs/design/autopilot-v2.md and ADR-0018.",
+  "author": {
+    "name": "Edison Steele",
+    "email": "edisonsteele@gmail.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/soilmass/hitl-playbook/tree/main/plugins/autopilot-v2",
+  "repository": "https://github.com/soilmass/hitl-playbook",
+  "keywords": ["autopilot", "hitl", "human-in-the-loop", "agent-governance", "claude-code"],
+  "engines": {
+    "claude-code": ">=2.0.0"
+  }
+}

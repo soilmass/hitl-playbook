@@ -1,0 +1,18 @@
+{
+  "id": "budget-tick",
+  "class": "A-hybrid",
+  "description": "Approaching the per-session tool-call budget. Surface a budget checkpoint so the human can extend or hand back.",
+  "detection": {
+    "type": "state_counter",
+    "tools": ["*"],
+    "counter": "tool-calls",
+    "thresholds": {
+      "yellow": 50,
+      "red": 150
+    }
+  },
+  "action": "nudge",
+  "checkpoint_template_id": "budget-tick",
+  "advisory_text": "Tool-call budget at or near the yellow threshold. Per autopilot:checkpoint-format, surface a budget AskUserQuestion offering: extend budget by N, hand back now, or continue without ticking again.",
+  "fixture_id": "03-budget-tick"
+}

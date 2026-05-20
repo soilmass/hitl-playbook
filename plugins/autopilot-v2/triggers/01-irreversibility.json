@@ -1,0 +1,25 @@
+{
+  "id": "irreversibility",
+  "class": "A",
+  "description": "About to do something irreversible (push, force-push, publish, rm -rf, prod deploy). Pause and confirm.",
+  "detection": {
+    "type": "bash_pattern",
+    "tools": ["Bash"],
+    "patterns": [
+      "\\bgit\\s+push\\b",
+      "\\bgit\\s+commit\\s+.*--amend\\b",
+      "\\bnpm\\s+publish\\b",
+      "\\byarn\\s+publish\\b",
+      "\\bpnpm\\s+publish\\b",
+      "\\bcargo\\s+publish\\b",
+      "\\brm\\s+-rf\\b",
+      "\\bsudo\\s+rm\\b",
+      "\\bDROP\\s+TABLE\\b",
+      "\\bTRUNCATE\\s+TABLE\\b"
+    ]
+  },
+  "action": "nudge",
+  "checkpoint_template_id": "irreversible",
+  "advisory_text": "About to run an irreversible operation. Per autopilot:checkpoint-format, surface an AskUserQuestion with the specific command, options including a cancel path, before proceeding.",
+  "fixture_id": "02-irreversibility"
+}
