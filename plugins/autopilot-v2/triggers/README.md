@@ -4,23 +4,51 @@ Every yellow-tier trigger is defined in one JSON file here. Both `hooks/guard.mj
 
 ## Schema (per trigger)
 
+Authoritative schema: [`$schema.json`](./$schema.json). It is enforced at load
+time by `hooks/lib/triggers.mjs` — any file in this directory that violates it
+fails the roundtrip test and never reaches the hook. `additionalProperties` is
+`false` so a misspelled field (e.g. a stale namespace string) is rejected
+rather than silently ignored.
+
+Common envelope (every trigger):
+
 ```json
 {
   "id": "kebab-case-id",
   "class": "A" | "A-hybrid",
   "description": "one-line summary for SKILL.md generation",
-  "detection": {
-    "type": "bash_pattern" | "state_counter" | "external_effect",
-    "patterns": ["regex1", "regex2"],
-    "tools": ["Bash", "Edit"],
-    "threshold": 3
-  },
+  "detection": { "type": "...", "...": "..." },
   "action": "nudge" | "block",
-  "checkpoint_template_id": "irreversible" | "external" | "decision-log",
+  "checkpoint_template_id": "<template-id>" | null,
   "advisory_text": "Text shown to the agent via additionalContext when triggered.",
   "fixture_id": "02-irreversibility"
 }
 ```
+
+`detection` is polymorphic on `type` (the schema uses `oneOf`); fields from
+different branches MUST NOT be mixed:
+
+`bash_pattern` — regex match over Bash command input:
+
+```json
+{ "type": "bash_pattern", "tools": ["Bash"], "patterns": ["regex1", "regex2"] }
+```
+
+`state_counter` — per-session counter over the listed tools; requires exactly
+one of `threshold` (single tier) or `thresholds` (two-tier yellow/red):
+
+```json
+{ "type": "state_counter", "tools": ["Edit"], "counter": "writes-since-dlog",
+  "threshold": 3, "threshold_env_override": "AUTOPILOT_DLOG_THRESHOLD",
+  "reset_on": { "tool": "Skill", "skill_substring": "..." } }
+```
+
+```json
+{ "type": "state_counter", "tools": ["*"], "counter": "tool-calls",
+  "thresholds": { "yellow": 50, "red": 150 } }
+```
+
+See `$schema.json` for the full contract.
 
 ## Per-class detection contract
 

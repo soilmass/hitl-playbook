@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "autopilot-v2/triggers/$schema.json",
+  "title": "Autopilot v2 trigger",
+  "description": "Schema for every trigger file in plugins/autopilot-v2/triggers/. Enforced by hooks/lib/triggers.mjs at load time. Unknown fields are rejected (additionalProperties=false) so typos cannot silently disable a trigger — the canonical v2 incident was a string-typo on a cross-reference field that the field-level loader could not catch.",
+  "type": "object",
+  "required": ["id", "class", "description", "detection", "action", "checkpoint_template_id", "advisory_text", "fixture_id"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "class": { "type": "string", "enum": ["A", "A-hybrid"] },
+    "description": { "type": "string", "minLength": 1 },
+    "action": { "type": "string", "enum": ["nudge", "block"] },
+    "checkpoint_template_id": { "type": ["string", "null"] },
+    "advisory_text": { "type": "string", "minLength": 1 },
+    "fixture_id": { "type": "string", "minLength": 1 },
+    "detection": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["type", "tools", "patterns"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "type": "string", "enum": ["bash_pattern"] },
+            "tools": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "patterns": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          }
+        },
+        {
+          "required": ["type", "tools", "counter"],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": ["threshold"],
+              "not": { "required": ["thresholds"] }
+            },
+            {
+              "required": ["thresholds"],
+              "not": { "required": ["threshold"] }
+            }
+          ],
+          "properties": {
+            "type": { "type": "string", "enum": ["state_counter"] },
+            "tools": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "counter": { "type": "string", "minLength": 1 },
+            "thresholds": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["yellow", "red"],
+              "properties": {
+                "yellow": { "type": "number" },
+                "red": { "type": "number" }
+              }
+            },
+            "threshold": { "type": "number" },
+            "threshold_env_override": { "type": "string" },
+            "reset_on": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["tool"],
+              "properties": {
+                "tool": { "type": "string" },
+                "skill_substring": { "type": "string" }
+              }
+            }
+          }
+        },
+        {
+          "required": ["type", "tools"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "type": "string", "enum": ["external_effect"] },
+            "tools": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "matcher": { "type": "object" }
+          }
+        }
+      ]
+    }
+  }
+}

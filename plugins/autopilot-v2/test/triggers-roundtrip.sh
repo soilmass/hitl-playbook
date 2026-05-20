@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # triggers-roundtrip.sh — the v2 architectural invariant test.
 #
-# Verifies that triggers/*.json round-trips through both consumers:
-#   1. tools/gen-skill.mjs (skill text generation)
-#   2. hooks/lib/triggers.mjs (hook loader + regex compilation)
+# Verifies that triggers/*.json round-trips through both consumers
+# without drift:
+#   - hooks/lib/triggers.mjs (registry loader + schema validator
+#     + bash_pattern regex compilation)
+#   - tools/gen-skill.mjs (skills/autopilot/SKILL.md generation)
 #
 # If either fails, the single-source-of-truth contract is broken.
 # Run before every commit that touches triggers/, hooks/, or skills/autopilot/.
@@ -15,12 +17,39 @@ cd "$HERE"
 
 echo "=== triggers-roundtrip ==="
 
-# Step 1: registry loads + validates schema.
-echo "[1/3] registry loads..."
+# Step 1: registry loads.
+echo "[1/4] registry loads..."
 node -e "import('./hooks/lib/triggers.mjs').then(m => { const ts = m.loadTriggers(); if (ts.length === 0) { process.stderr.write('no triggers loaded\n'); process.exit(1); } console.log(' ', ts.length, 'triggers OK:', ts.map(t=>t.id).join(', ')); })"
 
-# Step 2: every bash_pattern regex compiles + matches its own description-ish text.
-echo "[2/3] regex compilation..."
+# Step 2: every trigger file validates against triggers/\$schema.json.
+# Separate from step 1 because loadTriggers() also validates as a
+# side effect; this step makes the contract explicit and produces
+# per-file output so a future regression is easy to localise.
+echo "[2/4] schema validation..."
+node -e "
+import('./hooks/lib/triggers.mjs').then(async m => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const dir = './triggers';
+  const schema = JSON.parse(fs.readFileSync(path.join(dir, '\$schema.json'), 'utf8'));
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && f !== '\$schema.json').sort();
+  let bad = 0;
+  for (const f of files) {
+    const obj = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    const errs = m.validateSchema(obj, schema, f);
+    if (errs.length === 0) {
+      console.log('  OK', f);
+    } else {
+      bad++;
+      for (const e of errs) console.error('  FAIL', e);
+    }
+  }
+  if (bad > 0) process.exit(1);
+});
+"
+
+# Step 3: every bash_pattern regex compiles.
+echo "[3/4] regex compilation..."
 node -e "
 import('./hooks/lib/triggers.mjs').then(m => {
   for (const t of m.bashPatternTriggers()) {
@@ -35,8 +64,8 @@ import('./hooks/lib/triggers.mjs').then(m => {
 });
 "
 
-# Step 3: generated SKILL.md matches what's checked in.
-echo "[3/3] SKILL.md fresh vs registry..."
+# Step 4: generated SKILL.md matches what's checked in.
+echo "[4/4] SKILL.md fresh vs registry..."
 node tools/gen-skill.mjs --check
 
 echo "=== PASS ==="
