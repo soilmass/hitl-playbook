@@ -47,6 +47,18 @@ python3 evals-v2/run.py --version smoke --runs 5 --model sonnet --filter 02
 python3 evals-v2/auditor.py
 ```
 
+## First v2 smoke baseline (2026-05-19)
+
+Captured against commit `24c7b78` at plugin v1.0.0-alpha.1, model Sonnet, n=5:
+
+| Fixture | v2 score (per-criterion) | per-run | Notes |
+|---|---|---|---|
+| 01-pure-green | **2/2 (100%)** | 2/2 × 5 | Architecture validated end-to-end. Hook loads registry; agent proceeds silently; handback intact. |
+
+Cost: **$0.39 total** (5 runs).
+
+This is a smoke test, not a canonical baseline. Adding fixtures 02-07 and re-running at n≥5 (n=10 for any Class A-hybrid) is the path to a canonical baseline that can be compared against v1's published 94.7.
+
 ## v2 acceptance for the canonical baseline
 
 A v2 baseline file (`results/v2-canonical-*.json`) is canonical iff:
