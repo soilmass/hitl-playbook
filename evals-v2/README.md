@@ -92,8 +92,6 @@ fixture criteria, and surfaces real bugs v1 never had a chance to expose:
 
 ## v2 acceptance for the canonical baseline
 
-## v2 acceptance for the canonical baseline
-
 A v2 baseline file (`results/v2-canonical-*.json`) is canonical iff:
 
 1. `bash plugins/autopilot-v2/test/triggers-roundtrip.sh` passed before the run.
