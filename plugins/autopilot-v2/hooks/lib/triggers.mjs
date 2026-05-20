@@ -46,3 +46,19 @@ export function compileBashRegex(trigger) {
   const alts = trigger.detection.patterns.map((p) => `(?:${p})`).join("|");
   return new RegExp(alts, "i");
 }
+
+// Named accessors. Hook callers should ask for triggers by intent
+// (`getStateCounterTrigger("tool-calls")`) rather than reaching into
+// `.detection.counter` fields — the latter is a leaky abstraction
+// that drifts if the registry schema changes.
+export function getStateCounterTrigger(counterName) {
+  return stateCounterTriggers().find((t) => t.detection.counter === counterName);
+}
+
+export function getBudgetTrigger() {
+  return getStateCounterTrigger("tool-calls");
+}
+
+export function getDlogTrigger() {
+  return getStateCounterTrigger("writes-since-dlog");
+}

@@ -330,13 +330,23 @@ def _evaluate_only_if(predicate: str, results_so_far: dict) -> bool:
     Evaluate a simple predicate like 'criterion_id == false' or '... == true'
     against the already-computed results. Returns True iff this criterion
     should be applied (its only_if condition is met).
+
+    Strict on malformed input — raises ValueError so fixture-author typos
+    surface loudly instead of silently apply-by-default. The simplify-pass
+    audit (2026-05-19) flagged the old default-to-apply behavior as masking
+    real fixture bugs.
     """
     if "==" not in predicate:
-        return True  # malformed: default to applying
+        raise ValueError(f"only_if predicate {predicate!r} missing '==' operator")
     left, _, right = [x.strip() for x in predicate.partition("==")]
+    if right.lower() not in ("true", "false"):
+        raise ValueError(f"only_if predicate {predicate!r} RHS must be 'true' or 'false'; got {right!r}")
     ref = results_so_far.get(left)
     if ref is None:
-        return True  # referenced criterion not yet evaluated: apply by default
+        # Referenced criterion not yet evaluated. Permissive here is
+        # intentional — fixture ordering shouldn't be load-bearing, and
+        # the typo case is now caught above.
+        return True
     expected = right.lower() == "true"
     return ref.get("passed") is expected
 
@@ -349,9 +359,11 @@ def score_v2(fixture: dict, transcript: dict) -> dict:
     """
     Score one transcript against a fixture's v2 criteria.
 
-    Returns {criterion_id: {"passed": bool, "detail": dict}} for every
-    criterion in the fixture. Conditional criteria not satisfying their
-    only_if predicate pass with detail {"skipped": "<reason>"}.
+    Returns {criterion_id: {"passed": bool, "detail": dict, "skipped"?: bool}}
+    for every criterion in the fixture. Conditional criteria not satisfying
+    their only_if predicate get `"passed": True` + `"skipped": True` +
+    `detail: {"skipped": "<reason>"}`. Skipped criteria don't count toward
+    the failure tally; summarize() filters them out.
     """
     criteria = fixture.get("criteria", []) or []
     results: dict[str, dict] = {}
@@ -366,10 +378,14 @@ def score_v2(fixture: dict, transcript: dict) -> dict:
         results[c["id"]] = _evaluate(c, transcript)
 
     for c in deferred:
-        only_if = c.get("only_if", "")
-        if not _evaluate_only_if(only_if, results):
+        # handback_section_conditional without an only_if predicate behaves
+        # as an unconditional handback_section. Don't pass an empty string
+        # to _evaluate_only_if — that path is now strict on malformed input.
+        only_if = c.get("only_if")
+        if only_if and not _evaluate_only_if(only_if, results):
             results[c["id"]] = {
                 "passed": True,
+                "skipped": True,
                 "detail": {"skipped": f"only_if {only_if!r} not met"},
             }
             continue

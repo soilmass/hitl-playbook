@@ -22,20 +22,34 @@
 import { readFileSync, realpathSync, mkdirSync, appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve, sep, dirname, join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
-import { bashPatternTriggers, stateCounterTriggers, compileBashRegex } from './lib/triggers.mjs';
+import { bashPatternTriggers, compileBashRegex, getBudgetTrigger, getDlogTrigger } from './lib/triggers.mjs';
 
 // Yellow-tier triggers (loaded once at module init from triggers/*.json).
 const BASH_YELLOW_TRIGGERS = bashPatternTriggers().map((t) => ({
   trigger: t,
   regex: compileBashRegex(t),
 }));
-const BUDGET_TRIGGER = stateCounterTriggers().find((t) => t.detection.counter === 'tool-calls');
-const DLOG_TRIGGER = stateCounterTriggers().find((t) => t.detection.counter === 'writes-since-dlog');
+const BUDGET_TRIGGER = getBudgetTrigger();
+const DLOG_TRIGGER = getDlogTrigger();
 
 // Thresholds — env override > registry > legacy default.
 const BUDGET_YELLOW = Number(process.env.AUTOPILOT_BUDGET_YELLOW) || BUDGET_TRIGGER?.detection.thresholds?.yellow || 50;
 const BUDGET_RED = Number(process.env.AUTOPILOT_BUDGET_RED) || BUDGET_TRIGGER?.detection.thresholds?.red || 150;
 const DLOG_THRESHOLD = Number(process.env[DLOG_TRIGGER?.detection.threshold_env_override || 'AUTOPILOT_DLOG_THRESHOLD']) || DLOG_TRIGGER?.detection.threshold || 3;
+
+// Unified nudge payload constructor. The 3 yellow checks (bash, dlog,
+// budget) previously each inlined the same hookSpecificOutput shape with
+// slight variation. Centralizing here means the wire contract has one
+// authoritative writer.
+function emitNudge(trigger, prefix, extraContext = '') {
+  const payload = {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      additionalContext: `AUTOPILOT TRIGGER [${trigger.id}]${prefix ? ' ' + prefix : ''}: ${extraContext}${extraContext ? ' ' : ''}${trigger.advisory_text}`,
+    },
+  };
+  process.stdout.write(JSON.stringify(payload));
+}
 
 // Defang the hook environment: ignore caller's PATH and preload shims.
 process.env.PATH = '/usr/bin:/bin:/usr/local/bin';
@@ -138,15 +152,7 @@ function checkBashYellowTriggers(input) {
   if (!cmd) return;
   for (const { trigger, regex } of BASH_YELLOW_TRIGGERS) {
     if (regex.test(cmd)) {
-      const payload = {
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          additionalContext:
-            `AUTOPILOT TRIGGER [${trigger.id}]: about to run \`${cmd.slice(0, 80)}\`. ` +
-            trigger.advisory_text,
-        },
-      };
-      process.stdout.write(JSON.stringify(payload));
+      emitNudge(trigger, '', `about to run \`${cmd.slice(0, 80)}\`.`);
       return;
     }
   }
@@ -247,18 +253,10 @@ function checkDecisionLog(input) {
   if (!DLOG_TRIGGER.detection.tools.includes(toolName)) return;
   const sessionId = sessionIdFrom(input);
   const n = readDlogWrites(sessionId);
-  // Nudge ONCE when crossing the threshold (n === threshold).
-  // Don't repeat on subsequent writes to avoid spamming the agent.
+  // Nudge ONCE when crossing the threshold. Don't repeat on subsequent
+  // writes to avoid spamming the agent.
   if (n === DLOG_THRESHOLD) {
-    const payload = {
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        additionalContext:
-          `AUTOPILOT TRIGGER [${DLOG_TRIGGER.id}] (${n}/${DLOG_THRESHOLD}): ` +
-          DLOG_TRIGGER.advisory_text,
-      },
-    };
-    process.stdout.write(JSON.stringify(payload));
+    emitNudge(DLOG_TRIGGER, `(${n}/${DLOG_THRESHOLD})`);
   }
 }
 
@@ -283,15 +281,7 @@ function checkBudget(input) {
     block(`budget exceeded (${n} tool calls; red threshold ${BUDGET_RED}). Hand back to human; do not continue.`);
   }
   if (n === BUDGET_YELLOW && BUDGET_TRIGGER) {
-    const payload = {
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        additionalContext:
-          `AUTOPILOT TRIGGER [${BUDGET_TRIGGER.id}] (${n}/${BUDGET_RED}): ` +
-          BUDGET_TRIGGER.advisory_text,
-      },
-    };
-    process.stdout.write(JSON.stringify(payload));
+    emitNudge(BUDGET_TRIGGER, `(${n}/${BUDGET_RED})`);
     process.stderr.write(
       `autopilot-v2: budget tick (${n}/${BUDGET_RED} tool calls). Agent should surface AskUserQuestion.\n`
     );

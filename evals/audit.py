@@ -35,6 +35,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+# Cap untracked-file bodies injected into the audit prompt. Whole-file
+# injection makes per-call token cost scale with diff size instead of
+# signal; the first ~500 lines are where audit-surface findings live.
+UNTRACKED_BODY_LINE_CAP = 500
+
 AUDIT_PROMPT = """\
 You are an independent code reviewer auditing a diff. The author CANNOT
 see your reasoning, only your final report — so be specific.
@@ -113,13 +118,19 @@ def _collect_diff(since: str | None) -> tuple[str, list[str]]:
             body = fp.read_text()
         except (OSError, UnicodeDecodeError):
             continue  # binary or unreadable; skip body but still list it
+        body_lines = body.splitlines()
+        truncated = len(body_lines) > UNTRACKED_BODY_LINE_CAP
+        if truncated:
+            body_lines = body_lines[:UNTRACKED_BODY_LINE_CAP]
         diff_untracked += (
             f"\ndiff --git a/{f} b/{f}\n"
             f"new file\n"
             f"--- /dev/null\n+++ b/{f}\n"
         )
-        for line in body.splitlines():
+        for line in body_lines:
             diff_untracked += f"+{line}\n"
+        if truncated:
+            diff_untracked += f"+... [truncated at {UNTRACKED_BODY_LINE_CAP} lines for audit; full file at {f}]\n"
     return diff_tracked + diff_untracked, files
 
 

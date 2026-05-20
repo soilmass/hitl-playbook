@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scorer.stats import paired_bootstrap_delta, variance_flag, wilson_ci  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RESULTS_DIR = REPO_ROOT / "evals" / "results"
+RESULTS_DIR = REPO_ROOT / "evals-v2" / "results"
 
 
 # ============================================================================
