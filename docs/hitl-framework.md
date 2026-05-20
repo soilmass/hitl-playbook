@@ -156,6 +156,7 @@ See [`adr/`](./adr/). Numbered in order. Append-only per [`../standards/11-adrs.
 | [0015](./adr/0015-pretool-hook-stderr-invisibility.md) | PreToolUse hook stderr is invisible at exit 0; use `additionalContext` JSON to nudge the agent |
 | [0016](./adr/0016-mechanism-vs-skill-text-triggers.md) | Categorical triggers split: tool-layer-detectable use hook nudges; brief-content-only depend on skill text |
 | [0017](./adr/0017-rigorous-criteria-methodology.md) | Rigorous criteria methodology — per-criterion binary scoring, bootstrap-CI gating, judge calibration (supersedes ADR-0011's merge-gate rule) |
+| [0018](./adr/0018-rebuild-from-lessons-learned.md) | Treat v1 as the prototype; capture v2 architecture as a design doc rather than incrementally re-ADRing each lesson — see [`design/autopilot-v2.md`](./design/autopilot-v2.md) |
 
 ---
 

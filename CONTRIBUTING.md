@@ -7,8 +7,9 @@ This repo holds the web-engineering playbook + the `autopilot` Claude Code plugi
 Read in this order:
 1. [`docs/hitl-framework.md`](./docs/hitl-framework.md) — the methodology.
 2. [`docs/autopilot-plugin.md`](./docs/autopilot-plugin.md) — what the plugin does.
-3. [`docs/adr/`](./docs/adr/) — why it does it that way (17 decisions, append-only).
-4. [`evals/README.md`](./evals/README.md) — how we measure changes.
+3. [`docs/adr/`](./docs/adr/) — why it does it that way (18 decisions, append-only).
+4. [`docs/design/autopilot-v2.md`](./docs/design/autopilot-v2.md) — what v1 taught us; what v2 would be if we rebuilt today. v1 is production; v2 is a design, not a commitment.
+5. [`evals/README.md`](./evals/README.md) — how we measure changes.
 
 If you're about to file an issue or PR that contradicts an ADR, read that ADR first; the contradiction may already be addressed.
 
