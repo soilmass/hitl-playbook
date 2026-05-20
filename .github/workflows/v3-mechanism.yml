@@ -1,0 +1,36 @@
+name: v3 mechanism
+
+on:
+  pull_request:
+    paths:
+      - 'evals-v2/scorer/**'
+      - 'evals-v2/fixtures/**'
+      - 'evals-v2/test/**'
+      - 'evals/scorer/**'
+      - 'plugins/autopilot-v2/**'
+      - 'evals-v3/**'
+      - '.github/workflows/v3-mechanism.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'evals-v2/scorer/**'
+      - 'evals-v2/fixtures/**'
+      - 'evals-v2/test/**'
+      - 'evals/scorer/**'
+      - 'plugins/autopilot-v2/**'
+      - 'evals-v3/**'
+      - '.github/workflows/v3-mechanism.yml'
+
+jobs:
+  mechanism-replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: { python-version: '3.x' }
+      - uses: actions/setup-node@v6
+        with: { node-version: '22' }
+      - name: Install pyyaml
+        run: pip install pyyaml
+      - name: Mechanism-track replay
+        run: python3 evals-v3/mechanism/replay.py
